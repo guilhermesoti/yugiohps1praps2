@@ -784,6 +784,27 @@ int main(int argc, char **argv)
         }
         slot = made < 0 ? 0 : made;
         snprintf(user, sizeof(user), "mc%d:/YFMPS2", slot);
+        {
+            /* O icone e o titulo da pasta no navegador do PS2 (sem eles o
+             * console a mostra como dados corrompidos). */
+            extern unsigned char mc_icon_sys[], mc_icon_sys_end[], mc_icon_icn[], mc_icon_icn_end[];
+            static const struct { const char *name; unsigned char *start, *end; } icons[] = {
+                {"icon.sys", mc_icon_sys, mc_icon_sys_end}, {"yfm.icn", mc_icon_icn, mc_icon_icn_end}};
+            int k;
+            for (k = 0; k < 2; k++) {
+                char path[64];
+                FILE *f;
+                snprintf(path, sizeof(path), "%s/%s", user, icons[k].name);
+                if ((f = fopen(path, "rb"))) {
+                    fclose(f);
+                    continue;
+                }
+                if ((f = fopen(path, "wb"))) {
+                    fwrite(icons[k].start, 1, (size_t)(icons[k].end - icons[k].start), f);
+                    fclose(f);
+                }
+            }
+        }
         if (disc_mode == 1) {
             setenv("MEMORIES_LANGUAGE_FILE", "cdfs:/LANG/PTBR.TXT", 1);
             setenv("MEMORIES_TRACE", "mods", 1); /* o idioma no console do emulador */

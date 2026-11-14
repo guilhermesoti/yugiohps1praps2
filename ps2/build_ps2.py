@@ -136,7 +136,7 @@ UNIT_FLAGS = {"src/pc/guest/main.c": ["-Dmain=Memories_PcMain"],
               "src/pc/sdk/libpress.c": ["-O3"],
               "src/pc/audio/spu.c": ["-O3"],
               "src/ps2/stubs_ps2.c": ["-fno-builtin"],
-              "src/ps2/irx.S": ["-Wa,-I" + PS2SDK + "/iop/irx"]}
+              "src/ps2/irx.S": ["-Wa,-I" + PS2SDK + "/iop/irx", "-Wa,-I" + os.path.join(ROOT, "src/ps2/mcicon")]}
 
 
 def compile_unit(job):

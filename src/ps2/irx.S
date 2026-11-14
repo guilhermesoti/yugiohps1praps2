@@ -16,3 +16,6 @@ BLOB(irx_padman, "padman.irx")
 BLOB(irx_cdfs, "cdfs.irx")
 BLOB(irx_mcman, "mcman.irx")
 BLOB(irx_mcserv, "mcserv.irx")
+/* O icone da pasta do memory card (tools/ps2/mcicon). */
+BLOB(mc_icon_sys, "icon.sys")
+BLOB(mc_icon_icn, "yfm.icn")
