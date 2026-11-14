@@ -1,4 +1,4 @@
-Yu-Gi-Oh! Forbidden Memories - port nativo para PlayStation 2 (v0.1.0 beta)
+Yu-Gi-Oh! Forbidden Memories - port nativo para PlayStation 2 (v0.2.0 beta)
 https://github.com/guilhermesoti/yugiohps1praps2
 
 COMO JOGAR

@@ -379,7 +379,7 @@ void Ps2_Intro(int pad_ok, int audio_ok, int fast)
             text_cs(208, "Forbidden Memories", scale_rgb(0xFFFFFF, a), 2);
             fill(W / 2 - 160, 238, 320, 2, scale_rgb(0xC8962E, a));
             text_c(272, "Port nativo para PlayStation 2", scale_rgb(0xC8D0F0, a - 120), 1);
-            text_c(320, "versao 0.1 beta  -  projeto de fa, gratuito", scale_rgb(0x8890B0, a - 200), 1);
+            text_c(320, "versao 0.2 beta  -  projeto de fa, gratuito", scale_rgb(0x8890B0, a - 200), 1);
             if (f < B_START + 20) bright = (f - B_START) * 128 / 20;
             if (f >= B_FADE) bright = 128 - (f - B_FADE) * 128 / (C_START - B_FADE);
         } else {
