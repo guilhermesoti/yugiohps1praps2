@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""icon.sys e yfm.icn da pasta YFMPS2 do memory card (o navegador do PS2 mostra
+"""icon.sys e yfm.icn (moeda 3D com o Olho de Rá) da pasta YFMPS2 do memory card (o navegador do PS2 mostra
 título e ícone em vez de "dados corrompidos"). O ícone é um quadrado plano
 com a arte release/ART/RGPM_001.01_ICO.png, parado.
 
@@ -50,28 +50,80 @@ def icon_sys(line1, line2, icon_name):
     return bytes(b)
 
 
-def icn(texture_path):
-    img = Image.open(texture_path).convert("RGB").resize((128, 128), Image.LANCZOS)
-    # quadrado plano, frente para a câmera: 2 triângulos
-    s = 0.9
-    quad = [(-s, -s, 0, 0, 0), (s, -s, 0, 1, 0), (-s, s, 0, 0, 1),
-            (s, -s, 0, 1, 0), (s, s, 0, 1, 1), (-s, s, 0, 0, 1)]
+def eye_of_ra_texture(S=4):
+    """Medalha dourada com o Olho de Rá (Wadjet, símbolo do Egito antigo)
+    desenhada aqui: 128x128, o disco ocupa a textura toda; o canto (0,0)
+    fica dourado liso para a borda da moeda."""
+    from PIL import ImageDraw
+    w = 128 * S
+    im = Image.new("RGB", (w, w), (214, 160, 52))
+    d = ImageDraw.Draw(im)
+    c = w / 2
+    # disco: anéis
+    d.ellipse([4 * S, 4 * S, w - 4 * S, w - 4 * S], fill=(150, 98, 24))
+    d.ellipse([10 * S, 10 * S, w - 10 * S, w - 10 * S], fill=(236, 184, 70))
+    d.ellipse([16 * S, 16 * S, w - 16 * S, w - 16 * S], outline=(170, 112, 30), width=2 * S)
+    # brilho
+    d.ellipse([26 * S, 22 * S, 62 * S, 46 * S], fill=(250, 214, 120))
+    ink, lapis = (60, 30, 10), (30, 60, 140)
+    L = lambda pts: [(x * S, y * S) for x, y in pts]
+    # sobrancelha
+    d.line(L([(30, 46), (48, 40), (72, 39), (98, 44)]), fill=ink, width=5 * S, joint="curve")
+    # olho (amêndoa)
+    d.polygon(L([(30, 60), (44, 52), (64, 49), (84, 52), (100, 60), (84, 66), (64, 69), (44, 66)]), fill=(250, 240, 220), outline=ink)
+    d.line(L([(30, 60), (44, 52), (64, 49), (84, 52), (100, 60)]), fill=ink, width=4 * S)
+    d.line(L([(30, 60), (44, 66), (64, 69), (84, 66), (100, 60)]), fill=ink, width=3 * S)
+    # pupila
+    d.ellipse(L([(56, 50), (74, 68)]), fill=lapis, outline=ink, width=2 * S)
+    d.ellipse(L([(62, 55), (68, 61)]), fill=(240, 240, 255))
+    # traço que segue o canto do olho
+    d.line(L([(100, 60), (110, 60)]), fill=ink, width=4 * S)
+    # marca vertical (lágrima)
+    d.line(L([(58, 68), (56, 84), (54, 98)]), fill=ink, width=5 * S)
+    # espiral
+    d.line(L([(70, 68), (74, 80), (80, 90), (88, 94), (94, 90), (93, 83), (86, 82), (84, 87)]), fill=ink, width=4 * S, joint="curve")
+    im = im.resize((128, 128), Image.LANCZOS)
+    im.putpixel((0, 0), (214, 160, 52)); im.putpixel((1, 0), (214, 160, 52)); im.putpixel((0, 1), (214, 160, 52))
+    return im
+
+
+def icn(texture_path=None):
+    """Moeda 3D: duas faces com o olho e a borda grossa dourada."""
+    import math
+    img = eye_of_ra_texture()
+    N, R, T, CY = 24, 1.0, 0.18, -1.05      # lados, raio, meia espessura, centro (y para cima é negativo)
+    verts = []                               # (x, y, z, nx, ny, nz, u, v)
+    def ang(i): return 2 * math.pi * i / N
+    for side, z, nz in ((0, -T, -1.0), (1, T, 1.0)):
+        for i in range(N):
+            a0, a1 = ang(i), ang(i + 1)
+            pts = [(0.0, 0.0), (math.cos(a0), math.sin(a0)), (math.cos(a1), math.sin(a1))]
+            if side: pts = [pts[0], pts[2], pts[1]]
+            for px, py in pts:
+                u = 0.5 + 0.47 * (px if side == 0 else -px)
+                v = 0.5 + 0.47 * py
+                verts.append((px * R, CY + py * R, z, 0.0, 0.0, nz, u, v))
+    for i in range(N):                       # borda
+        a0, a1 = ang(i), ang(i + 1)
+        c0, s0, c1, s1 = math.cos(a0), math.sin(a0), math.cos(a1), math.sin(a1)
+        q = [(c0, s0, -T), (c1, s1, -T), (c0, s0, T), (c1, s1, -T), (c1, s1, T), (c0, s0, T)]
+        for cx, sy, z in q:
+            verts.append((cx * R, CY + sy * R, z, cx, sy, 0.0, 0.004, 0.004))
     fx = lambda v: int(round(v * 4096))
     data = bytearray()
-    data += struct.pack("<IIIfI", 0x010000, 1, 0x07, 1.0, len(quad))
-    for x, y, z, u, v in quad:
-        data += struct.pack("<4h", fx(x), fx(y), fx(z), 0)       # posição (shape 0)
-        data += struct.pack("<4h", 0, 0, fx(-1.0), 0)            # normal
-        data += struct.pack("<2h", fx(u), fx(v))                 # uv
-        data += struct.pack("<4B", 0x80, 0x80, 0x80, 0x80)       # cor
-    # animação: 1 quadro, sem chaves de movimento
+    data += struct.pack("<IIIfI", 0x010000, 1, 0x07, 1.0, len(verts))
+    for x, y, z, nx, ny, nz, u, v in verts:
+        data += struct.pack("<4h", fx(x), fx(y), fx(z), 0)
+        data += struct.pack("<4h", fx(nx), fx(ny), fx(nz), 0)
+        data += struct.pack("<2h", fx(u), fx(v))
+        data += struct.pack("<4B", 0x80, 0x80, 0x80, 0x80)
     data += struct.pack("<IIfII", 0x01, 1, 1.0, 0, 1)
-    data += struct.pack("<IIII", 0, 1, 0, 0)  # quadro do shape 0, sem chaves extras
-    # textura 128x128 A1B5G5R5
+    data += struct.pack("<IIII", 0, 1, 0, 0)
     for y in range(128):
         for x in range(128):
             r, g, bb = img.getpixel((x, y))
             data += struct.pack("<H", (r >> 3) | ((g >> 3) << 5) | ((bb >> 3) << 10) | 0x8000)
+    img.save(os.path.join(OUT, "textura_preview.png"))
     return bytes(data)
 
 

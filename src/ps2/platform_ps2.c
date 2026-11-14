@@ -796,8 +796,13 @@ int main(int argc, char **argv)
                 FILE *f;
                 snprintf(path, sizeof(path), "%s/%s", user, icons[k].name);
                 if ((f = fopen(path, "rb"))) {
+                    /* ja existe: so regrava se for de outra versao */
+                    long have;
+                    fseek(f, 0, SEEK_END);
+                    have = ftell(f);
                     fclose(f);
-                    continue;
+                    if (have == (long)(icons[k].end - icons[k].start))
+                        continue;
                 }
                 if ((f = fopen(path, "wb"))) {
                     fwrite(icons[k].start, 1, (size_t)(icons[k].end - icons[k].start), f);
