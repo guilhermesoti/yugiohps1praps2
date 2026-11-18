@@ -1,0 +1,36 @@
+# Quando uma release é publicada no GitHub (página Releases > Draft a new release),
+# esta Action monta o zip com o ELF de release/, o LEIA-ME, a licença e os créditos
+# e anexa à release. Não precisa subir arquivo nenhum à mão.
+# Também dá para rodar à mão (Actions > Release > Run workflow) informando a tag.
+name: Release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release que recebe o zip (ex.: v0.1.0-beta)"
+        required: true
+permissions:
+  contents: write
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar o zip e anexar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          mkdir -p pacote/YFM
+          mkdir -p pacote/YFM/languages
+          cp release/YFM_PS2.ELF release/LEIA-ME.txt LICENSE CREDITOS.md pacote/YFM/
+          cp languages/pt-br.txt pacote/YFM/languages/
+          cp tools/ps2/iso/montar_iso.exe pacote/YFM/
+          cp -r release/ART pacote/ART
+          # A página que cria a ISO ou o aplicativo a partir do .bin/.cue do jogador
+          # (o ELF e a tradução vão dentro dela).
+          python3 tools/ps2/make_creator.py release/YFM_PS2.ELF pacote/YFM/criar-port.html
+          (cd pacote && zip -r "../YFM_PS2_${TAG}.zip" YFM ART)
+          gh release upload "$TAG" "YFM_PS2_${TAG}.zip" --clobber

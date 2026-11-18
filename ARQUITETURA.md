@@ -59,6 +59,8 @@ arquivos de `src/pc/` e `src/game/`. Para ver só o que o port mudou no projeto 
 | `platform_ps2.c` | `main()`; sobe o IOP e os drivers (USB, controle, áudio); acha o `YFM.bin`; log de boot (`YFM-LOG.txt`); controle (libpad); áudio (audsrv); quadro a quadro (`Platform_Frame`); desenha os menus do port (save) por cima do jogo |
 | `guest_ps2.c` | Mapa de memória do jogo (TLB), modo supervisor, carga do executável do PS1 e relocação dos ponteiros dele, `Memories_Resolve` (endereço do PS1 → ponteiro), leitura do disco com read-ahead (`pread`), `fread`/`fwrite` com buffer intermediário, `mmap` (blocos de heap), `rename`/`fsync` para o FAT do USB |
 | `gs_gpu.c` / `.h` | **Renderizador**: traduz os comandos da GPU do PS1 (GP0) em primitivas do GS do PS2 |
+| `intro_ps2.c` / `intro_qr.h` | Abertura antes do jogo: vinheta da Retrogames (cubo dourado, acorde sintetizado no próprio código), título do port e tela "Apoie o projeto" com o QR code do Pix. Desenhada pela CPU em 640x448 e enviada por `GsGpu_IntroFrame` (gs_gpu.c); os buffers são do heap e liberados no fim (o ELF já usa quase toda a RAM: não use arrays estáticos grandes aqui). No PCSX2 com `host:` só roda se existir `intro.txt` |
+| (modo disco) | `platform_ps2.c`: com `argv[0]` em `cdrom0:` (ISO no OPL ou disco gravado) o port não carrega os drivers USB (no OPL o pendrive é do OPL), carrega `cdfs.irx` e lê `cdfs:/YFM.BIN`; idioma em `cdfs:/LANG/PTBR.TXT`; saves em `mc0:/YFMPS2` (`mcman`/`mcserv`). O `fstat` do cdfs devolve tamanho errado: `libds.c` mede por `lseek`. A ISO é montada por `tools/ps2/iso/montar_iso.c` (ID `RGPM_001.01`); capas do OPL em `release/ART` (`tools/ps2/opl_art`). No PCSX2, `host:mctest.txt` testa os saves no memory card |
 | `thunk.S` | `Memories_Icall` (chamada por ponteiro: função C ou endereço do PS1), `setjmp`/`longjmp` do jogo (com cópia dos registradores de 64 bits), `VSync` |
 | `relocate_ps2.c` | Corrige ponteiros dentro dos módulos que o jogo carrega do disco (e desfaz isso em dados de modelo 3D carregados por cima, ver seção 8) |
 | `sampler_ps2.c` | Tratamento de falhas da CPU (tela de erro com o endereço) e emulação de acessos do jogo a endereços físicos do PS1; amostrador de desempenho (só com `host:`) |
@@ -155,7 +157,11 @@ Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo
   eles). O newlib fica no fio: o jogo é `cdrom0:\YFM.BIN;1`. O cdrom0: não responde fstat: o tamanho
   vem do `YFM.SIZ` (`MEMORIES_DISC_SIZE`, `libds.c`). Os arquivos do port ficam em `mc0:/YFMPS2`, e
   não há `YFM-LOG.txt` (gravaria demais no cartão).
-- Testado no PCSX2 (AJUSTES, boot do jogo e abertura pela ISO). No OPL de verdade falta testar.
+- As duas formas de montar a ISO dão boot: a página `criar-port.html` (tradução em `PTBR.TXT` na
+  raiz, `YFM.SIZ` com o tamanho) e `tools/ps2/iso/montar_iso` (tradução em `LANG/PTBR.TXT`; o
+  tamanho sai do `libds.c`, por lseek ou por busca). Testado no PCSX2: AJUSTES, abertura, jogo em
+  português e saves em `mc0:/YFMPS2` com o ícone (o cartão precisa estar formatado). No OPL de
+  verdade falta testar.
 
 ## 8. Disco, módulos e o bug das batalhas 3D
 
@@ -211,5 +217,8 @@ Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo
 - Vídeos no console real: ainda podem engasgar (decodificação MDEC em software no EE + leitura do
   USB).
 - Áudio a 22 kHz (metade da taxa original) para caber no tempo do EE.
-- Tradução PT-BR: o projeto base tem sistema de idiomas (`languages/*.txt`); falta criar o
-  português e conferir os acentos da fonte.
+- Tradução PT-BR (`languages/pt-br.txt`, idioma 6 = `LANGUAGE_PT_BR`, padrão no PS2): feita a
+  partir do `es.txt` (mesmos códigos e caixas do PAL), descrições refeitas em 20 colunas e até
+  8 linhas. Falta: o nome escrito no topo da arte da carta continua em inglês no PS2 (no PC o
+  `soft_gpu` redesenha a placa; o GS não), e as imagens com texto (menu principal, game over).
+  Ferramentas usadas: `tools/ps2/pt_br/` (montagem e conferência de tamanho das linhas).

@@ -18,6 +18,7 @@ processador do PS2 (Emotion Engine, MIPS R5900) e a imagem é desenhada pelo chi
 1. No pendrive (FAT32 ou exFAT), crie uma pasta (por exemplo `APPS/YFM`).
 2. Copie para ela:
    - `release/YFM_PS2.ELF`
+   - a pasta `languages` com o `pt-br.txt` (o jogo em português; sem ela fica em inglês)
    - a imagem do seu disco renomeada para **`YFM.bin`** (o nome original
      `Yu-Gi-Oh! Forbidden Memories (USA).bin` também funciona).
 3. No PS2 abra o ELF pelo OPL (como app) ou pelo wLaunchELF.
@@ -25,13 +26,21 @@ processador do PS2 (Emotion Engine, MIPS R5900) e a imagem é desenhada pelo chi
 
 No PCSX2: *Sistema → Iniciar ELF*, com o `YFM.bin` na mesma pasta do ELF.
 
+**Como ISO (lista de jogos do OPL, com capa):** o pacote da release traz o `montar_iso.exe`. Com ele na
+pasta do port e a imagem `.bin` do seu disco ao lado, dois cliques criam
+`RGPM_001.01.Yu-Gi-Oh FM PS2.iso`. Ponha a ISO na pasta `CD` do OPL e a pasta `ART` do pacote na raiz do
+pendrive (capas com o ID `RGPM_001.01`). Pela ISO os saves vão para o memory card (`YFMPS2`). A ISO tem o
+seu jogo dentro: não compartilhe. No Linux: `cc -O2 -o montar_iso tools/ps2/iso/montar_iso.c`.
+
+
 ### Pelo criador (`release/criar-port.html`)
 
 Abra `release/criar-port.html` no navegador (Chrome, Edge ou Firefox), escolha o `.bin` e o `.cue`
 do seu disco e o formato. Tudo acontece no navegador, e o jogo não é enviado para lugar nenhum:
 
-- **ISO**: `YFM_PS2.iso` para a pasta `CD` do OPL ou para abrir no PCSX2. Os saves e as opções
-  ficam no cartão de memória (`mc0:/YFMPS2`). A tradução vai dentro dela (`PTBR.TXT`).
+- **ISO**: `RGPM_001.01.Yu-Gi-Oh FM PS2.iso` para a pasta `CD` do OPL (com a pasta `ART` do pacote,
+  as capas aparecem) ou para abrir no PCSX2. Os saves e as opções ficam no cartão de memória
+  (`YFMPS2`). A tradução vai dentro dela (`PTBR.TXT`).
 - **Aplicativo**: ZIP com `APPS/YFM_PS2/` (ELF, `YFM.bin`, `title.cfg` e a tradução em
   `languages/pt-br.txt`) para extrair na raiz do pendrive. Aparece na aba Apps do OPL. No Chrome e
   no Edge dá para gravar direto no pendrive.
@@ -73,9 +82,11 @@ Testado no PCSX2 e num PS2 de verdade (USB exFAT, pelo OPL):
 | Vídeos (STR) | 15 fps no PCSX2; no console ainda em ajuste |
 | Som | funciona (mixado a 22 kHz) |
 | Save / load | funciona: 5 slots em `YFM-SAVE/saves/` |
+| Português (BR) | textos, menus, cartas e descrições; nomes das cartas como na dublagem brasileira |
 
-O jogo grava `YFM-LOG.txt` ao lado do ELF e mostra as etapas da inicialização na tela. Se algo der
-errado, mande o `YFM-LOG.txt` e uma foto da tela.
+Ao ligar, o port mostra uma abertura da Retrogames e a tela "Apoie o projeto" (START pula a
+abertura; X ou START na tela de apoio começa o jogo). As etapas da inicialização vão para o
+`YFM-LOG.txt`, gravado ao lado do ELF. Se algo der errado, mande o `YFM-LOG.txt` e uma foto da tela.
 
 ## Como compilar
 
@@ -89,7 +100,53 @@ export PS2DEV=/usr/local/ps2dev     # onde o ps2dev está instalado
 
 O build não precisa da imagem do jogo.
 
+## Créditos
+
+Projeto **gratuito**, feito por fãs. Ele existe graças a:
+
+- **[Yu-Gi-Oh! Forbidden Memories Recompiled](https://github.com/Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled)**
+  (Unchiga e contribuidores) e **[memories-decomp](https://github.com/krystalgamer/memories-decomp)**
+  (krystalgamer e colaboradores): o jogo decompilado em C, a base de todo o port.
+- **[ps2dev](https://github.com/ps2dev/ps2dev)**, **[PS2SDK](https://github.com/ps2dev/ps2sdk)**,
+  **[gsKit](https://github.com/ps2dev/gsKit)** e **[ps2sdk-ports](https://github.com/ps2dev/ps2sdk-ports)**:
+  as ferramentas e bibliotecas do PS2.
+- **[PCSX2](https://github.com/PCSX2/pcsx2)**, **[OPL](https://github.com/ps2homebrew/Open-PS2-Loader)** e
+  **[wLaunchELF](https://github.com/ps2homebrew/wLaunchELF)**: para testar e rodar.
+
+Feito por **Guilherme Soti** ([Retrogames Patos de Minas](https://github.com/guilhermesoti)), que
+dirigiu o projeto e testou tudo num PS2 de verdade, com a ajuda de inteligências artificiais:
+**Claude** (Anthropic) no desenvolvimento, **Gemini** (Google) e **ChatGPT** (OpenAI) nas revisões
+técnicas e no conceito do menu de save. O que cada um fez está em **[CREDITOS.md](CREDITOS.md)**.
+
+## Apoie o projeto
+
+O port é e vai continuar gratuito. Se ele te ajudou e você quiser apoiar os próximos (como um port do
+Tekken 3), pode doar qualquer valor:
+
+<p align="center">
+  <img src="docs/pix-qrcode.png" alt="QR code Pix para doação" width="220"><br>
+  <b>Pix (chave aleatória):</b> <code>f19e4d1b-f35c-4541-919b-87a2cb540b9c</code>
+</p>
+
+<details>
+<summary>Pix copia e cola</summary>
+
+```
+00020126580014br.gov.bcb.pix0136f19e4d1b-f35c-4541-919b-87a2cb540b9c5204000053039865802BR5914GUILHERME SOTI6014PATOS DE MINAS62070503***63048E1F
+```
+</details>
+
+De fora do Brasil? / Outside Brazil? **[ko-fi.com/guilhermesoti](https://ko-fi.com/guilhermesoti)**
+
+<a href="https://ko-fi.com/guilhermesoti"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
+
+Toda doação é voluntária e não dá acesso a nada extra: o código e as builds continuam livres para
+todo mundo. Obrigado por apoiar a cena retro!
+
 ## Licença
 
-Código sob licença MIT (veja [LICENSE](LICENSE)). A decompilação pertence aos seus autores.
-Yu-Gi-Oh! e Forbidden Memories são marcas da Konami; você precisa da sua própria cópia do jogo.
+O código do port de PC e a camada PS2 (`src/ps2/`, `ps2/`, `build.sh`) estão sob a licença MIT (veja
+[LICENSE](LICENSE)): mantenha o aviso de copyright e o link para os projetos de origem. O código
+decompilado do jogo pertence aos autores do [memories-decomp](https://github.com/krystalgamer/memories-decomp).
+*Yu-Gi-Oh!* e *Forbidden Memories* são da Konami; este repositório não tem o jogo nem seus dados, e
+você precisa da sua própria cópia. Projeto sem ligação com a Konami.

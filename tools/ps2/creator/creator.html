@@ -392,7 +392,7 @@ function prepareStep3() {
   $("summary").innerHTML = `
     <div><small>Jogo</small>${state.bin.name}</div>
     <div><small>Formato</small>${iso ? "ISO (disco)" : "Aplicativo (APPS)"}</div>
-    <div><small>Vai gerar</small>${iso ? "YFM_PS2.iso" : "YFM_PS2_app.zip"} · ~${mb(state.check.size + 16e6)}</div>
+    <div><small>Vai gerar</small>${iso ? YFM.ISO_NAME : "YFM_PS2_app.zip"} · ~${mb(state.check.size + 16e6)}</div>
     <div><small>Idioma</small>${PTBR_GZ_B64 ? "Português (tradução inclusa)" : "Inglês"}</div>`;
   $("makeDirect").hidden = iso || !window.showDirectoryPicker;
   $("make").textContent = iso ? "Criar a ISO" : "Baixar o ZIP";
@@ -436,7 +436,7 @@ function finish(kind) {
   $("makeActions").hidden = true;
   const how = {
     iso: `<h3>Como jogar</h3><ol>
-      <li>Copie <code>YFM_PS2.iso</code> para a pasta <code>CD</code> do pendrive (FAT32 ou exFAT).</li>
+      <li>Copie a ISO para a pasta <code>CD</code> do pendrive (FAT32 ou exFAT). Com a pasta <code>ART</code> do pacote na raiz do pendrive, a capa aparece no OPL.</li>
       <li>No OPL, abra <b>Jogos USB</b> e escolha o jogo. No PCSX2, é só abrir a ISO.</li>
       <li>Os saves e as opções ficam no <b>cartão de memória</b>, na pasta <code>YFMPS2</code>.</li></ol>`,
     app: `<h3>Como jogar</h3><ol>
@@ -467,7 +467,7 @@ $("make").onclick = async () => {
     if (state.format === "iso") {
       progress(0.5, "Montando a ISO…");
       const iso = YFM.buildIso(bytes, state.bin, state.ptbr);
-      download(iso, "YFM_PS2.iso");
+      download(iso, YFM.ISO_NAME);
       finish("iso");
     } else {
       const zip = await YFM.buildApp(bytes, state.bin, (p) => progress(0.08 + p * 0.9, `Conferindo o jogo (CRC)… ${Math.round(p * 100)}%`), state.ptbr);

@@ -8,7 +8,10 @@ const YFM = (() => {
   const ISO_SECTOR = 2048;
   const GAME_ID = "SLUS_014.11"; /* Forbidden Memories USA */
   const EXPECTED_SIZE = 517872768;
-  const BOOT_NAME = "RTGM_014.11"; /* o ELF dentro da ISO; o OPL usa como ID */
+  /* O ELF dentro da ISO; o OPL usa como ID: o mesmo do tools/ps2/iso/montar_iso,
+   * para as capas da pasta ART (release/ART/RGPM_001.01_*.png) valerem. */
+  const BOOT_NAME = "RGPM_001.01";
+  const ISO_NAME = "RGPM_001.01.Yu-Gi-Oh FM PS2.iso";
   const APP_DIR = "YFM_PS2";
   const APP_TITLE = "Yu-Gi-Oh! Forbidden Memories PS2";
 
@@ -284,7 +287,7 @@ const YFM = (() => {
     await w.close();
   }
 
-  return { RAW, GAME_ID, EXPECTED_SIZE, BOOT_NAME, APP_DIR, parseCue, checkBin, gunzipBase64, crcBlob, crcUpdate,
+  return { RAW, GAME_ID, EXPECTED_SIZE, BOOT_NAME, ISO_NAME, APP_DIR, parseCue, checkBin, gunzipBase64, crcBlob, crcUpdate,
            buildIso, buildZip, buildApp, writeAppTo };
 })();
 if (typeof module !== "undefined") module.exports = YFM;

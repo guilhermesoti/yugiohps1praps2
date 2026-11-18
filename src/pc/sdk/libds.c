@@ -157,22 +157,36 @@ int DsInit(void)
         {
             struct stat info;
             int stat_failed = fstat(disc, &info);
-#ifdef MEMORIES_PS2
-            if (stat_failed || info.st_size <= 0) {
-                /* O cdfs (boot por ISO) não tem fstat: o tamanho pelo lseek. */
+            if (stat_failed || info.st_size <= 0 || (uint64_t)info.st_size / RAW_SECTOR > INT32_MAX) {
+                /* Some devices answer no fstat, or a wrong size (the PS2's
+                 * cdfs, the port run from a disc): the size by seeking to
+                 * the end. */
                 off_t end = lseek(disc, 0, SEEK_END);
+                if (end <= 0) {
+                    /* Nor SEEK_END: the last sector that reads, by halves. */
+                    long long low = 0, high = (long long)INT32_MAX;
+                    unsigned char probe;
+                    while (low < high) {
+                        long long mid = low + (high - low + 1) / 2;
+                        if (lseek(disc, (off_t)(mid * RAW_SECTOR), SEEK_SET) >= 0 && read(disc, &probe, 1) == 1)
+                            low = mid;
+                        else
+                            high = mid - 1;
+                    }
+                    end = (off_t)((low + 1) * RAW_SECTOR);
+                }
+                info.st_size = end > 0 ? end : -1;
                 lseek(disc, 0, SEEK_SET);
-                if (end > 0) stat_failed = 0, info.st_size = end;
             }
+#ifdef MEMORIES_PS2
             if (getenv("MEMORIES_DISC_SIZE")) {
-                /* Boot por ISO: o tamanho que a plataforma achou (platform_ps2.c);
-                 * o fstat do cdfs pode até "funcionar" com um tamanho errado. */
-                info.st_size = (off_t)strtoull(getenv("MEMORIES_DISC_SIZE"), NULL, 10);
-                if (info.st_size > 0) stat_failed = 0;
+                /* Boot por ISO pelo cdrom0: da BIOS (platform_ps2.c): o tamanho
+                 * que a plataforma achou (o YFM.SIZ do criador). */
+                off_t told = (off_t)strtoull(getenv("MEMORIES_DISC_SIZE"), NULL, 10);
+                if (told > 0) info.st_size = told;
             }
 #endif
-            if (stat_failed || info.st_size < 0 ||
-                (uint64_t)info.st_size / RAW_SECTOR > INT32_MAX) {
+            if (info.st_size < 0 || (uint64_t)info.st_size / RAW_SECTOR > INT32_MAX) {
                 Crash_ReportFatal("disc", "cannot determine disc image size");
                 _exit(1);
             }

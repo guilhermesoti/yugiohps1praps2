@@ -231,7 +231,7 @@ static unsigned signature_of(int bank, int page_x, int page_y, int depth, int cl
     const uint16_t *clut = (source ? source : SoftGpu_Vram()) + (clut_y & 511) * 1024;
     unsigned sum = 2166136261u;
     for (i = 0; i < entries; i++) sum = (sum ^ clut[(clut_x + i) & 1023]) * 16777619u;
-    if (bank) sum ^= 0x9E3779B9u * (unsigned)bank;
+    if (bank) sum = (sum ^ 0x9E3779B9u * (unsigned)bank) * 31u + SoftGpu_BankGeneration(bank);
     for (by = (page_y & 511) >> 5; by < (((page_y & 511) + 256) >> 5) && by < 16; by++)
         for (bx = (page_x & 1023) >> 6; bx < (((page_x & 1023) + width) >> 6); bx++)
             sum = sum * 31u + gen[by * 16 + (bx & 15)];
@@ -355,12 +355,12 @@ static struct {
 
 static uint64_t tex0_for(int u0, int v0, int u1, int v1)
 {
-    int bank = 0, page_x = gpu.page_x, page_y = gpu.page_y, depth = gpu.depth;
+    int bank = gpu.bank, page_x = gpu.page_x, page_y = gpu.page_y, depth = gpu.depth;
     if (prim.page_word >= 0) {
         bank = (prim.page_word >> 11) & 15;
         bank |= ((prim.page_word >> 10) & 1) << 4;
-        if (bank && !SoftGpu_BankPixels(bank)) bank = 0;
     }
+    if (bank && !SoftGpu_BankPixels(bank)) bank = 0;
     if (depth == 2 && !bank) {
         /* Straight from VRAM: the page's origin is a page of the buffer. */
         int bp = (((page_y & 511) / 64) * 16 + (page_x & 1023) / 64) * 32;
@@ -418,13 +418,14 @@ static inline uint64_t xyz(int x, int y)
     return (uint64_t)((((x + OFFSET) << 4) + line_half) & 0xFFFF) |
            ((uint64_t)((((y + OFFSET) << 4) + line_half) & 0xFFFF) << 16);
 }
-/* Com o filtro bilinear, meio texel a mais: o GS filtra em torno do centro
- * do texel (u - 0,5), e o PS1 entrega coordenadas de canto. Sem isso cada
- * pixel seria a média de dois texels vizinhos (imagem borrada e deslocada). */
-static int uv_half;
+/* Texel centres (+8, half a texel): the console's GS interpolates UV with
+ * a little error, and on the exact texel edge it can round to the texel
+ * before, so a sprite's first row or column took its neighbour's in the
+ * sheet (dark lines across the dialogue portraits, which are made of 16x16
+ * pieces). PCSX2 is exact either way. */
 static inline uint64_t uv(int u, int v)
 {
-    return (uint64_t)(((u << 4) + uv_half) & 0x3FFF) | ((uint64_t)(((v << 4) + uv_half) & 0x3FFF) << 16);
+    return (uint64_t)(((u << 4) + 8) & 0x3FFF) | ((uint64_t)(((v << 4) + 8) & 0x3FFF) << 16);
 }
 
 /* ---- 16:9 (a mesma ideia do port de PC, soft_gpu.c) ----
@@ -580,7 +581,6 @@ static void emit(int type, const Vertex *v, int count, int pass_semi, int test)
  * enviado: na VRAM e, em 16:9, de novo na imagem larga. */
 static void passes(int type, const Vertex *v, int count, int smooth)
 {
-    uv_half = smooth ? 8 : 0;
     if (prim.textured) {
         if (prim.semi) {
             emit(type, v, count, 0, TEST_ALPHA(4u, 0x40u)); /* the opaque texels */
@@ -595,7 +595,6 @@ static void passes(int type, const Vertex *v, int count, int smooth)
     } else {
         emit(type, v, count, prim.semi, TEST_NONE);
     }
-    uv_half = 0;
 }
 
 static void draw(int type, Vertex *v, int count)
@@ -676,7 +675,11 @@ static void set_draw_mode(uint32_t word)
     gpu.depth = (word >> 7) & 3;
     gpu.dither = (word >> 9) & 1;
     gpu.draw_display = (word >> 10) & 1;
-    gpu.texture_off = (word >> 11) & 1;
+    /* Bits 11-14: the port's texture bank (soft_gpu.h; an E1 names banks
+     * 0-15), not the texture-off bit, which retail never sets: the added
+     * letters of a translation (bank 15) came out as blank boxes. */
+    gpu.texture_off = 0;
+    gpu.bank = (word >> 11) & 15;
 }
 
 static void set_scissor(void)
@@ -731,7 +734,7 @@ static size_t polygon(const uint32_t *words, size_t count)
             } else if (i == 1) {
                 /* The polygon's own page and depth for itself and after it. */
                 uint32_t page = t >> 16;
-                set_draw_mode((page & 0x9FF) | ((uint32_t)gpu.dither << 9) | ((uint32_t)gpu.draw_display << 10));
+                set_draw_mode((page & 0x79FF) | ((uint32_t)gpu.dither << 9) | ((uint32_t)gpu.draw_display << 10));
                 prim.page_word = (int)page;
             }
         } else {
@@ -1049,9 +1052,13 @@ int GsGpu_Video(void) { return video_mode; }
  * (320 ou 426) é ampliada pelo inteiro que cabe e centrada. */
 static void screen_for(int key, int w, int h)
 {
-    int x = 0;
+    int x = 0, y = 0;
     if (key == 1) x = (1440 - (1440 / w) * w) / 2;
-    graph_set_screen(x, 0, w, h);
+    /* O libgraph põe o NTSC na linha 26 com 224 linhas; o PS1 mostra 240:
+     * sobe a imagem o que passa de 224 (senão a caixa do FIELD era cortada
+     * embaixo na TV). */
+    if ((key == 0 || key == 2) && h > 224) y = -((h - 224) / 2);
+    graph_set_screen(x, y, w, h);
 }
 
 static void display(int fbp, int fbw, int psm, int x, int y, int w, int h, int interlace)
@@ -1231,6 +1238,13 @@ void GsGpu_ReadVram(uint16_t *out)
     for (y = 0; y < 512; y += 64) download(0, y, 1024, 64, out + y * 1024);
 }
 
+/* `rows` rows from `y` (a multiple of 16), for a dump in strips. */
+void GsGpu_ReadVramRows(int y, int rows, uint16_t *out)
+{
+    if (y == 0) flush_pending();
+    download(0, y, 1024, rows, out);
+}
+
 static void environment(void)
 {
     static const int dither[4][4] = {{-4, 0, -3, 1}, {2, -2, 3, -1}, {-3, 1, -4, 0}, {3, -1, 2, -2}};
@@ -1269,6 +1283,45 @@ void GsGpu_ShowPicture(uint32_t *rgb)
     upload(FBP_24 * 32, 5, PSM_CT32, 0, 0, 320, 240, rgb, 320 * 240 * 4);
     wait_idle();
     display(FBP_24, 5, PSM_CT32, 0, 0, 320, 240, 0);
+}
+
+/* A abertura (intro_ps2.c), antes do jogo: quadros 640 x 448 CT32 enviados
+ * direto para um de dois framebuffers (paginas 0 e 140) e mostrados no
+ * proximo vsync, em modo entrelacado. NULL: fim (GsGpu_Init refaz tudo). */
+void GsGpu_IntroFrame(const uint32_t *abgr)
+{
+    static int started, back;
+    if (!abgr) {
+        if (started) {
+            wait_idle();
+            *GS_DISPFB1 = *GS_DISPFB2 = 0;
+            /* A tela AJUSTES (antes da abertura) já tinha ligado o renderizador:
+             * a abertura refez o GS, então o GsGpu_Init faz tudo de novo. */
+            active = 0;
+        }
+        started = 0;
+        return;
+    }
+    if (!started) {
+        dma_channel_initialize(DMA_CHANNEL_GIF, NULL, 0);
+        dma_channel_fast_waits(DMA_CHANNEL_GIF);
+        graph_initialize(0, 640, 448, PSM_CT32, 0, 0);
+        started = 1, back = 140;
+    }
+    FlushCache(0);
+    upload(back * 32, 10, PSM_CT32, 0, 0, 640, 448, abgr, 640 * 448 * 4);
+    wait_idle();
+    graph_wait_vsync();
+    display(back, 10, PSM_CT32, 0, 0, 640, 448, 1);
+    if (started == 1) {
+        /* 448 linhas entrelacadas: cada campo le uma linha sim, outra nao
+         * (FFMD campo), com o filtro anti-tremido para o texto. */
+        graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_NTSC, GRAPH_MODE_FIELD, GRAPH_ENABLE);
+        graph_set_screen(0, 0, 640, 448);
+        graph_set_output(1, 0, 1, 0, 1, 0xFF);
+        started = 2;
+    }
+    back = back ? 0 : 140;
 }
 
 void GsGpu_Init(void)

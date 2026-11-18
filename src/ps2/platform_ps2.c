@@ -22,6 +22,7 @@ extern int fileXioInit(void); /* newlib then goes through fileXio (iomanX device
 #include <stdarg.h>
 #include <malloc.h>
 #include <sys/stat.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,7 +129,7 @@ void Ps2_Fatal(const char *message)
 /* ---- IOP modules ---- */
 #define IRX(name) extern unsigned char irx_##name[], irx_##name##_end[]
 IRX(iomanx); IRX(filexio); IRX(usbd); IRX(bdm); IRX(bdmfs); IRX(usbmass); IRX(libsd); IRX(audsrv); IRX(sio2man);
-IRX(padman); IRX(mcman); IRX(mcserv);
+IRX(padman); IRX(cdfs); IRX(mcman); IRX(mcserv);
 
 static int load_buffer(const char *name, unsigned char *start, unsigned char *end)
 {
@@ -140,13 +141,15 @@ static int load_buffer(const char *name, unsigned char *start, unsigned char *en
     return 0;
 }
 
-static int pad_ok, audio_ok, usb_ok, mc_ok;
-static int load_buffer(const char *name, unsigned char *start, unsigned char *end);
+static int pad_ok, audio_ok, usb_ok, mc_ok, cd_ok;
 /* O ELF veio de um disco (uma ISO no OPL ou no PCSX2, um CD gravado): o jogo
- * é lido do próprio disco (YFM.BIN), e os saves e a configuração vão para o
- * cartão de memória. O USB não é carregado: no OPL ele é do próprio OPL, que
- * lê a ISO do pendrive, e um segundo driver USB o derrubaria. */
+ * é lido do próprio disco pelo cdrom0: da BIOS (YFM.BIN), e os saves e a
+ * configuração vão para o cartão de memória. O USB não é carregado: no OPL
+ * ele é do próprio OPL, que lê a ISO do pendrive. */
 static int from_disc;
+/* disc_mode: 1 com from_disc; 2 no teste do cartão no emulador (host: com
+ * mctest.txt). Os saves vão para mc0:/YFMPS2 (ou mc1:) nos dois. */
+static int disc_mode;
 static unsigned char pad_buffer[256] __attribute__((aligned(64)));
 
 /* Boot por ISO (OPL no modo ISO, PCSX2, CD gravado): como o port de Super
@@ -197,8 +200,12 @@ static void iop_start(void)
     }
     if (!load_buffer("iomanX", irx_iomanx, irx_iomanx_end) && !load_buffer("fileXio", irx_filexio, irx_filexio_end))
         fileXioInit();
-    usb_ok = !load_buffer("usbd", irx_usbd, irx_usbd_end) && !load_buffer("bdm", irx_bdm, irx_bdm_end) &&
-             !load_buffer("bdmfs", irx_bdmfs, irx_bdmfs_end) && !load_buffer("usbmass", irx_usbmass, irx_usbmass_end);
+    if (disc_mode) {
+        cd_ok = !load_buffer("cdfs", irx_cdfs, irx_cdfs_end);
+    } else {
+        usb_ok = !load_buffer("usbd", irx_usbd, irx_usbd_end) && !load_buffer("bdm", irx_bdm, irx_bdm_end) &&
+                 !load_buffer("bdmfs", irx_bdmfs, irx_bdmfs_end) && !load_buffer("usbmass", irx_usbmass, irx_usbmass_end);
+    }
     /* The pad driver the SDK's libpad speaks to: its own, as the SDK built
      * it; the console's newer ROM one if that cannot load; the old ROM one
      * last (the 0.1 prototype found consoles where one or the other worked). */
@@ -209,9 +216,10 @@ static void iop_start(void)
     else if (SifLoadModule("rom0:SIO2MAN", 0, NULL) >= 0 && SifLoadModule("rom0:PADMAN", 0, NULL) >= 0)
         pad_ok = 3;
     if (pad_ok && (padInit(0) < 0 || padPortOpen(0, 0, pad_buffer) <= 0)) pad_ok = 0;
+    mc_ok = !load_buffer("mcman", irx_mcman, irx_mcman_end) && !load_buffer("mcserv", irx_mcserv, irx_mcserv_end);
     audio_ok = !load_buffer("libsd", irx_libsd, irx_libsd_end) && !load_buffer("audsrv", irx_audsrv, irx_audsrv_end) &&
                audsrv_init() == 0;
-    printf("ps2: IOP ready (usb %d, pad %d, audio %d, mc %d, disco %d)\n", usb_ok, pad_ok, audio_ok, mc_ok, from_disc);
+    printf("ps2: IOP ready (usb %d, pad %d, audio %d, cd %d, mc %d)\n", usb_ok, pad_ok, audio_ok, cd_ok, mc_ok);
 }
 
 /* ---- video ---- */
@@ -415,7 +423,12 @@ static int idioma, sem_traducao;
  * PTBR.TXT (a ISO só aceita nomes de 8 letras, sem hífen). */
 static void caminho_traducao(char *path, size_t size)
 {
-    if (from_disc) snprintf(path, size, "cdrom0:\\PTBR.TXT;1");
+    if (from_disc) {
+        /* Na raiz (a página criar-port) ou em LANG/ (tools/ps2/iso/montar_iso). */
+        FILE *file = fopen("cdrom0:\\PTBR.TXT;1", "rb");
+        if (file) fclose(file);
+        snprintf(path, size, file ? "cdrom0:\\PTBR.TXT;1" : "cdrom0:\\LANG\\PTBR.TXT;1");
+    }
     else if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:languages/pt-br.txt");
     else snprintf(path, size, "%s/languages/pt-br.txt", program_dir);
 }
@@ -430,7 +443,7 @@ static void aplica_idioma(void)
     if (file) fclose(file);
     if (sem_traducao) idioma = 1;
     setenv("MEMORIES_LANGUAGE", idioma ? "0" : "6", 1); /* LANGUAGE_US ou LANGUAGE_PT_BR */
-    if (!idioma) setenv("MEMORIES_LANGUAGE_PACK", path, 1);
+    if (!idioma) setenv("MEMORIES_LANGUAGE_FILE", path, 1);
     printf("ps2: idioma %s (%s)\n", idioma ? "ingles" : "portugues", sem_traducao ? "sem traducao" : path);
 }
 static void visual_path(char *path, size_t size)
@@ -853,22 +866,31 @@ void Platform_Frame(unsigned frame)
     }
     if ((getenv("PS2_DUMP_FRAME") && frame == (unsigned)atoi(getenv("PS2_DUMP_FRAME"))) || live_bits == 0xFFFF) {
         live_bits = 0;
-        /* Host debugging only: the buffer is taken for the dump and given back. */
-        uint16_t *dump = memalign(64, 1024 * 512 * 2);
+        /* In strips of 32 rows (64 KB): with the translation's text on the
+         * heap there is no room for the whole megabyte at once. */
+        extern void GsGpu_ReadVramRows(int y, int rows, uint16_t *out);
+        extern const uint16_t *SoftGpu_Vram(void);
+        uint16_t *dump = memalign(64, 1024 * 32 * 2);
         FILE *file;
-        if (!dump) return;
-        GsGpu_ReadVram(dump);
         char path[320];
+        int y;
+        if (!dump) {
+            printf("ps2: VRAM dump: no memory\n");
+            Ps2_LogSave();
+            return;
+        }
         if (live_input) snprintf(path, sizeof(path), "host:gsvram.bin");
         else snprintf(path, sizeof(path), "%s/YFM-GSVRAM.bin", program_dir);
         if ((file = fopen(path, "wb"))) {
-            fwrite(dump, 2, 1024 * 512, file);
+            for (y = 0; y < 512; y += 32) {
+                GsGpu_ReadVramRows(y, 32, dump);
+                fwrite(dump, 2, 1024 * 32, file);
+            }
             fclose(file);
-        }
+        } else printf("ps2: VRAM dump: cannot write %s\n", path);
         if (live_input) snprintf(path, sizeof(path), "host:cpuvram.bin");
         else snprintf(path, sizeof(path), "%s/YFM-CPUVRAM.bin", program_dir);
         if ((file = fopen(path, "wb"))) {
-            extern const uint16_t *SoftGpu_Vram(void);
             fwrite(SoftGpu_Vram(), 2, 1024 * 512, file);
             fclose(file);
         }
@@ -929,10 +951,11 @@ int main(int argc, char **argv)
     static char *pc_argv[2] = {"memories-ps2", NULL};
     printf("ps2: Yu-Gi-Oh! Forbidden Memories PS2 port starting (%s)\n", argc > 0 ? argv[0] : "?");
     from_disc = argc > 0 && argv[0] && !strncmp(argv[0], "cdrom", 5);
+    disc_mode = from_disc;
     iop_start();
-    init_scr();
-    boot_screen = 1;
-    scr_printf("\n\n  Yu-Gi-Oh! Forbidden Memories - PS2 (debug)\n\n");
+    /* Sem a tela de texto de debug: as etapas vao so para o YFM-LOG.txt; a
+     * tela mostra a abertura (intro_ps2.c) e, se algo falhar, Ps2_Fatal. */
+    boot_screen = 0;
     Ps2_Stage("IOP: usb %d, controle %d, audio %d", usb_ok, pad_ok, audio_ok);
     {
         extern void Ps2_InstallFaultHandlers(void);
@@ -955,7 +978,7 @@ int main(int argc, char **argv)
     Ps2_Stage("pasta: %s", program_dir);
     /* The USB stick needs a moment to appear after its driver loads. */
     disc = find_disc();
-    if (!disc && usb_ok) {
+    if (!disc && (usb_ok || disc_mode)) {
         int tries;
         for (tries = 0; tries < 20 && !(disc = find_disc()); tries++) {
             struct timespec wait = {0, 250000000};
@@ -1006,6 +1029,17 @@ int main(int argc, char **argv)
     tela_ajustes();
 
     {
+        extern void Ps2_Intro(int pad_ok, int audio_ok, int fast);
+        FILE *want = strncmp(program_dir, "host", 4) ? NULL : fopen("host:intro.txt", "rb");
+        if (want) fclose(want);
+        if (strncmp(program_dir, "host", 4) || want) {
+            Ps2_Stage("abertura");
+            Ps2_Intro(pad_ok, audio_ok, 0);
+            Ps2_Stage("abertura terminou");
+        }
+    }
+
+    {
         struct timespec a, b;
         volatile unsigned spin;
         clock_gettime(CLOCK_MONOTONIC, &a);
@@ -1017,6 +1051,61 @@ int main(int argc, char **argv)
     setenv("MEMORIES_PROGRAM_DIR", program_dir, 1);
     if (!strcmp(program_dir, "host:")) snprintf(program_dir, sizeof(program_dir), "host:.");
     snprintf(user, sizeof(user), "%s/YFM-SAVE", program_dir);
+    {
+        /* Emulator test of the memory card path (host: with mctest.txt). */
+        FILE *want = strncmp(program_dir, "host", 4) ? NULL : fopen("host:mctest.txt", "rb");
+        if (want) fclose(want), disc_mode = 2;
+    }
+    if (disc_mode) {
+        /* The memory card in slot 1 (or 2): mc0:/YFMPS2. */
+        int slot, made = -1;
+        for (slot = 0; slot < 2; slot++) {
+            char dir[32], probe_path[48];
+            FILE *probe;
+            int r;
+            snprintf(dir, sizeof(dir), "mc%d:/YFMPS2", slot);
+            r = mkdir(dir, 0777);
+            snprintf(probe_path, sizeof(probe_path), "%s/PROBE.TXT", dir);
+            probe = fopen(probe_path, "wb");
+            printf("ps2: memory card %d: %s (errno %d)\n", slot, probe ? "ok" : "sem acesso", probe ? 0 : errno);
+            if (probe) {
+                fclose(probe);
+                remove(probe_path);
+                made = slot;
+                break;
+            }
+        }
+        slot = made < 0 ? 0 : made;
+        snprintf(user, sizeof(user), "mc%d:/YFMPS2", slot);
+        {
+            /* O icone e o titulo da pasta no navegador do PS2 (sem eles o
+             * console a mostra como dados corrompidos). */
+            extern unsigned char mc_icon_sys[], mc_icon_sys_end[], mc_icon_icn[], mc_icon_icn_end[];
+            static const struct { const char *name; unsigned char *start, *end; } icons[] = {
+                {"icon.sys", mc_icon_sys, mc_icon_sys_end}, {"yfm.icn", mc_icon_icn, mc_icon_icn_end}};
+            int k;
+            for (k = 0; k < 2; k++) {
+                char path[64];
+                FILE *f;
+                snprintf(path, sizeof(path), "%s/%s", user, icons[k].name);
+                if ((f = fopen(path, "rb"))) {
+                    /* ja existe: so regrava se for de outra versao */
+                    long have;
+                    fseek(f, 0, SEEK_END);
+                    have = ftell(f);
+                    fclose(f);
+                    if (have == (long)(icons[k].end - icons[k].start))
+                        continue;
+                }
+                if ((f = fopen(path, "wb"))) {
+                    fwrite(icons[k].start, 1, (size_t)(icons[k].end - icons[k].start), f);
+                    fclose(f);
+                }
+            }
+        }
+        if (disc_mode == 1) setenv("MEMORIES_TRACE", "mods", 1); /* o idioma no console do emulador */
+        Ps2_Stage("disco: saves em %s", user);
+    }
     setenv("MEMORIES_USER_DIR", user, 1);
     setenv("MEMORIES_NO_MONITOR", "1", 1);
     if (!strncmp(program_dir, "host:", 5)) {
