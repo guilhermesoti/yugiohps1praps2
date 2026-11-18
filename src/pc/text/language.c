@@ -47,12 +47,13 @@ static int disc_count, scanned, current;
  * Spanish ones (which carry the final text of all four), then the French and
  * German (an earlier German and Spanish). English only from its own. */
 static const int preference[LANGUAGE_COUNT][SERIALS] = {
-    {-1}, {0, -1}, {1, 3, 4, 2, -1}, {2, 3, 4, 1, -1}, {3, 4, 1, 2, -1}, {4, 3, 1, 2, -1}};
+    {-1}, {0, -1}, {1, 3, 4, 2, -1}, {2, 3, 4, 1, -1}, {3, 4, 1, 2, -1}, {4, 3, 1, 2, -1}, {-1}};
 
 const char *Language_Label(int language)
 {
     static const char *const labels[LANGUAGE_COUNT] = {"English (US)", "English (Europe)", "Français",
-                                                       "Deutsch",      "Italiano",         "Español"};
+                                                       "Deutsch",      "Italiano",         "Español",
+                                                       "Português (Brasil)"};
     return language >= 0 && language < LANGUAGE_COUNT ? labels[language] : "";
 }
 
@@ -272,7 +273,7 @@ static int disc_available(int language) { return disc_for(language) != NULL; }
  * working folder, or in MEMORIES_LANGUAGES_DIR), each the listing
  * disc_listing gives for the language, written by
  * tools/pc/export_languages.py. */
-static const char *const pack_names[LANGUAGE_COUNT] = {NULL, "en-eu", "fr", "de", "it", "es"};
+static const char *const pack_names[LANGUAGE_COUNT] = {NULL, "en-eu", "fr", "de", "it", "es", "pt-br"};
 #define PACK_LIMIT (16u << 20)
 
 static FILE *open_pack(int language, char *path, size_t size)
@@ -280,7 +281,14 @@ static FILE *open_pack(int language, char *path, size_t size)
     const char *named = getenv("MEMORIES_LANGUAGES_DIR");
     char relative[64];
     FILE *file;
+    const char *pack = getenv("MEMORIES_LANGUAGE_PACK");
     if (language <= LANGUAGE_US || language >= LANGUAGE_COUNT) return NULL;
+    /* MEMORIES_LANGUAGE_PACK: o arquivo do idioma escolhido, onde a pasta
+     * languages/ não cabe (a ISO do PS2: nomes de 8 letras, sem hífen). */
+    if (pack && *pack && language == Settings_Get(SET_LANGUAGE)) {
+        snprintf(path, size, "%s", pack);
+        if ((file = fopen(path, "rb"))) return file;
+    }
     if (named && *named) {
         snprintf(path, size, "%s/%s.txt", named, pack_names[language]);
         return fopen(path, "rb");
@@ -310,23 +318,36 @@ static char *pack_listing(int language, size_t *length, char *origin, size_t ori
 {
     char path[PATH_SIZE], *text = NULL;
     FILE *file = open_pack(language, path, sizeof(path));
-    long size;
-    size_t n = 0, i;
+    size_t size = 0, capacity = 0, got, n = 0, i;
     if (!file) return NULL;
-    if (!fseek(file, 0, SEEK_END) && (size = ftell(file)) > 0 && (unsigned long)size < PACK_LIMIT &&
-        !fseek(file, 0, SEEK_SET) && (text = malloc((size_t)size + 1)) &&
-        fread(text, 1, (size_t)size, file) == (size_t)size) {
-        for (i = 0; i < (size_t)size; i++) {
-            if (text[i] != '\r') text[n++] = text[i];
+    /* Em blocos até o fim, sem perguntar o tamanho: o cdrom0: do PS2 (a
+     * tradução dentro da ISO) não responde o fseek até o fim. */
+    for (;;) {
+        if (size + 65536 + 1 > capacity) {
+            char *bigger;
+            capacity = capacity ? capacity * 2 : 262144;
+            if (capacity > PACK_LIMIT || !(bigger = realloc(text, capacity))) {
+                free(text);
+                fclose(file);
+                return NULL;
+            }
+            text = bigger;
         }
-        text[n] = '\0';
-        *length = n;
-        snprintf(origin, origin_size, "%s", path);
-    } else {
-        free(text);
-        text = NULL;
+        got = fread(text + size, 1, 65536, file);
+        size += got;
+        if (got < 65536) break;
     }
     fclose(file);
+    if (!size) {
+        free(text);
+        return NULL;
+    }
+    for (i = 0; i < size; i++) {
+        if (text[i] != '\r') text[n++] = text[i];
+    }
+    text[n] = '\0';
+    *length = n;
+    snprintf(origin, origin_size, "%s", path);
     return text;
 }
 
@@ -515,6 +536,38 @@ static const char *const own_words[LANGUAGE_COUNT] = {
                     "[FE37]\n%s EN %d SOBRES{end}\n\n"
                     "[FE38]\n%d CARTA{end}\n\n"
                     "[FE39]\nYA TODAS{end}\n",
+    [LANGUAGE_PT_BR] = "\n@bank dialog\n\n"
+                       "[FE00]\nNOVA{end}\n\n"
+                       "[FE01]\n%d CARTA A MAIS{end}\n\n"
+                       "[FE02]\n%d CARTAS A MAIS{end}\n\n"
+                       "[FE03]\nPÁGINA %d DE %d{end}\n\n"
+                       "[FE10]\nDECKS{end}\n\n"
+                       "[FE20]\nPACOTES{end}\n\n"
+                       "[FE21]\nCOMPRAR{end}\n\n"
+                       "[FE22]\nSAIR{end}\n\n"
+                       "[FE23]\nVOLTAR{end}\n\n"
+                       "[FE24]\nINFO{end}\n\n"
+                       "[FE25]\nSEGUE{end}\n\n"
+                       "[FE26]\nPULAR{end}\n\n"
+                       "[FE27]\nOK{end}\n\n"
+                       "[FE28]\nEND{end}\n\n"
+                       "[FE29]\nESGOTADO{end}\n\n"
+                       "[FE2A]\nRESTAM %d{end}\n\n"
+                       "[FE2B]\n%d CARTAS{end}\n\n"
+                       "[FE2C]\nBLOQUEADO{end}\n\n"
+                       "[FE2D]\nVENÇA %s{end}\n\n"
+                       "[FE2E]\nVENÇA %s x%d{end}\n\n"
+                       "[FE2F]\nGANHE %d DUELOS{end}\n\n"
+                       "[FE30]\nAVANCE NA HISTÓRIA{end}\n\n"
+                       "[FE31]\nTENHA %s{end}\n\n"
+                       "[FE32]\nTENHA %d %s{end}\n\n"
+                       "[FE33]\nGASTE MAIS %d{end}\n\n"
+                       "[FE34]\nABRA MAIS %d PACOTES{end}\n\n"
+                       "[FE35]\nABRA %s x%d{end}\n\n"
+                       "[FE36]\nPELO MENOS %d %s{end}\n\n"
+                       "[FE37]\n%s EM %d PACOTES{end}\n\n"
+                       "[FE38]\n%d CARTA{end}\n\n"
+                       "[FE39]\nJÁ TEM TODAS{end}\n",
 };
 
 /* The opponents' short names (TEXT_OWN_OPPONENT + id), only where
@@ -537,6 +590,8 @@ static const char *const own_names[LANGUAGE_COUNT] = {
                     "[FE67]\nMaestro K{end}\n",
     [LANGUAGE_ES] = "\n@bank dialog\n\n"
                     "[FE67]\nMaestro K{end}\n",
+    [LANGUAGE_PT_BR] = "\n@bank dialog\n\n"
+                       "[FE67]\nMestre K{end}\n",
 };
 
 /* `listing` (`*length` bytes, malloc'd) with `extra` after it, if it can
@@ -580,6 +635,9 @@ char *Language_Listing(size_t *length)
     /* Its narrow letters as the PAL font has them (glyphs.h). */
     Glyphs_SetEuropean(1);
     LOG(LOG_MODS, "language: %s from %s", Language_Label(language), origin);
+#ifdef MEMORIES_PS2
+    printf("ps2: texto em %s (%s, %u bytes)\n", Language_Code(language), origin, (unsigned)*length);
+#endif
     return listing;
 }
 

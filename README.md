@@ -25,6 +25,39 @@ processador do PS2 (Emotion Engine, MIPS R5900) e a imagem é desenhada pelo chi
 
 No PCSX2: *Sistema → Iniciar ELF*, com o `YFM.bin` na mesma pasta do ELF.
 
+### Pelo criador (`release/criar-port.html`)
+
+Abra `release/criar-port.html` no navegador (Chrome, Edge ou Firefox), escolha o `.bin` e o `.cue`
+do seu disco e o formato. Tudo acontece no navegador, e o jogo não é enviado para lugar nenhum:
+
+- **ISO**: `YFM_PS2.iso` para a pasta `CD` do OPL ou para abrir no PCSX2. Os saves e as opções
+  ficam no cartão de memória (`mc0:/YFMPS2`). A tradução vai dentro dela (`PTBR.TXT`).
+- **Aplicativo**: ZIP com `APPS/YFM_PS2/` (ELF, `YFM.bin`, `title.cfg` e a tradução em
+  `languages/pt-br.txt`) para extrair na raiz do pendrive. Aparece na aba Apps do OPL. No Chrome e
+  no Edge dá para gravar direto no pendrive.
+
+Para usar o ELF solto (sem o criador), copie também a pasta `languages/` do projeto para o lado
+dele: sem `languages/pt-br.txt` o jogo fica em inglês.
+
+O `build.sh` gera a página de novo a cada build, com o ELF novo embutido.
+
+### Tela AJUSTES (como no port de Super Mario World)
+
+Ao ligar, a tela **AJUSTES** escolhe:
+
+- **Vídeo**: 240p (cabo AV em TV de tubo) ou 480i (cabo AV em TV de tela plana). Um modo novo
+  pergunta "A imagem apareceu?" e volta sozinho se ninguém apertar X em 10 s.
+- **Tela**: 4:3, ou 16:9 (mostra mais do cenário 3D dos lados; a imagem sai espremida para a TV
+  em modo 16:9 esticar. O círculo do painel fica redondo com a TV no modo certo).
+- **Suavização**: Desligada (como no PS1), Média (sem o pontilhado) ou Forte (sem pontilhado e
+  com o 3D suavizado; é o padrão).
+- **Idioma**: Português (a tradução do port, `languages/pt-br.txt`; é o padrão) ou English (o
+  original). Sem o arquivo da tradução, o jogo fica em inglês.
+
+Com os ajustes salvos, a tela começa sozinha em 5 s. No jogo, **L2 + R2 + X** troca 4:3 e 16:9 e
+**L2 + R2 + Círculo** troca a suavização. Tudo fica em `YFM-VISUAL.txt` (no pendrive, ao lado do
+ELF; na ISO, no cartão de memória, em `YFMPS2`).
+
 Controle: igual ao do PS1. Ao escolher o alvo de um ataque, **Quadrado** mostra a batalha 3D dos
 monstros e **X** faz o ataque rápido.
 

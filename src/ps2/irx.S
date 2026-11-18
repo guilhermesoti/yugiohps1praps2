@@ -13,3 +13,7 @@ BLOB(irx_libsd, "libsd.irx")
 BLOB(irx_audsrv, "audsrv.irx")
 BLOB(irx_sio2man, "sio2man.irx")
 BLOB(irx_padman, "padman.irx")
+/* Boot por ISO (ELF em cdrom0:): o cartão de memória, se a BIOS não tiver
+ * o XMCMAN (platform_ps2.c, iop_start_disc). */
+BLOB(irx_mcman, "mcman.irx")
+BLOB(irx_mcserv, "mcserv.irx")

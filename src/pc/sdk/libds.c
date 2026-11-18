@@ -156,7 +156,22 @@ int DsInit(void)
         }
         {
             struct stat info;
-            if (fstat(disc, &info) || info.st_size < 0 ||
+            int stat_failed = fstat(disc, &info);
+#ifdef MEMORIES_PS2
+            if (stat_failed || info.st_size <= 0) {
+                /* O cdfs (boot por ISO) não tem fstat: o tamanho pelo lseek. */
+                off_t end = lseek(disc, 0, SEEK_END);
+                lseek(disc, 0, SEEK_SET);
+                if (end > 0) stat_failed = 0, info.st_size = end;
+            }
+            if (getenv("MEMORIES_DISC_SIZE")) {
+                /* Boot por ISO: o tamanho que a plataforma achou (platform_ps2.c);
+                 * o fstat do cdfs pode até "funcionar" com um tamanho errado. */
+                info.st_size = (off_t)strtoull(getenv("MEMORIES_DISC_SIZE"), NULL, 10);
+                if (info.st_size > 0) stat_failed = 0;
+            }
+#endif
+            if (stat_failed || info.st_size < 0 ||
                 (uint64_t)info.st_size / RAW_SECTOR > INT32_MAX) {
                 Crash_ReportFatal("disc", "cannot determine disc image size");
                 _exit(1);

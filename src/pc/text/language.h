@@ -11,7 +11,9 @@
  * comes from is language.c's `sources` table. */
 #include <stddef.h>
 
-enum { LANGUAGE_US, LANGUAGE_EN_EU, LANGUAGE_FR, LANGUAGE_DE, LANGUAGE_IT, LANGUAGE_ES, LANGUAGE_COUNT };
+/* LANGUAGE_PT_BR: a tradução do port (languages/pt-br.txt), feita do texto
+ * espanhol do PAL (os mesmos códigos e caixas); não há disco PAL dela. */
+enum { LANGUAGE_US, LANGUAGE_EN_EU, LANGUAGE_FR, LANGUAGE_DE, LANGUAGE_IT, LANGUAGE_ES, LANGUAGE_PT_BR, LANGUAGE_COUNT };
 
 /* The name the menu shows, in the language itself (UTF-8). */
 const char *Language_Label(int language);

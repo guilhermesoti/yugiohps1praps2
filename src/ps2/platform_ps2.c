@@ -35,7 +35,10 @@ extern int fileXioInit(void); /* newlib then goes through fileXio (iomanX device
 #include "pc/cards/cards.h"
 #include "ps2.h"
 #include "pc/saves/save_menu.h"
+#include "pc/saves/deck_menu.h"
 #include "gs_gpu.h"
+#include "ajustes.h"
+#include <graph.h>
 
 extern int Memories_PcMain(int argc, char **argv);
 extern void Cheats_Frame(void);
@@ -125,7 +128,7 @@ void Ps2_Fatal(const char *message)
 /* ---- IOP modules ---- */
 #define IRX(name) extern unsigned char irx_##name[], irx_##name##_end[]
 IRX(iomanx); IRX(filexio); IRX(usbd); IRX(bdm); IRX(bdmfs); IRX(usbmass); IRX(libsd); IRX(audsrv); IRX(sio2man);
-IRX(padman);
+IRX(padman); IRX(mcman); IRX(mcserv);
 
 static int load_buffer(const char *name, unsigned char *start, unsigned char *end)
 {
@@ -137,8 +140,45 @@ static int load_buffer(const char *name, unsigned char *start, unsigned char *en
     return 0;
 }
 
-static int pad_ok, audio_ok, usb_ok;
+static int pad_ok, audio_ok, usb_ok, mc_ok;
+static int load_buffer(const char *name, unsigned char *start, unsigned char *end);
+/* O ELF veio de um disco (uma ISO no OPL ou no PCSX2, um CD gravado): o jogo
+ * é lido do próprio disco (YFM.BIN), e os saves e a configuração vão para o
+ * cartão de memória. O USB não é carregado: no OPL ele é do próprio OPL, que
+ * lê a ISO do pendrive, e um segundo driver USB o derrubaria. */
+static int from_disc;
 static unsigned char pad_buffer[256] __attribute__((aligned(64)));
+
+/* Boot por ISO (OPL no modo ISO, PCSX2, CD gravado): como o port de Super
+ * Mario World faz. Nada de iomanX/fileXio/cdfs nem USB: no OPL o USB é do
+ * próprio OPL, e o IOP dele é montado para os módulos da BIOS, como nos
+ * jogos comerciais. O newlib fica no fio (IOMAN da BIOS), que lê o disco
+ * por cdrom0: e o cartão por mc0:. Os módulos do SDK embutidos só entram
+ * se a BIOS não tiver os X. */
+static void iop_start_disc(void)
+{
+    if (SifLoadModule("rom0:XSIO2MAN", 0, NULL) >= 0) {
+        pad_ok = SifLoadModule("rom0:XPADMAN", 0, NULL) >= 0 ? 2 : !load_buffer("padman", irx_padman, irx_padman_end);
+        mc_ok = SifLoadModule("rom0:XMCMAN", 0, NULL) >= 0;
+        if (!mc_ok) { /* o XMCMAN precisa do SECRMAN */
+            SifLoadModule("rom0:SECRMAN", 0, NULL);
+            mc_ok = SifLoadModule("rom0:XMCMAN", 0, NULL) >= 0;
+        }
+        mc_ok = mc_ok && SifLoadModule("rom0:XMCSERV", 0, NULL) >= 0;
+    } else {
+        pad_ok = !load_buffer("sio2man", irx_sio2man, irx_sio2man_end) && !load_buffer("padman", irx_padman, irx_padman_end);
+        mc_ok = !load_buffer("mcman", irx_mcman, irx_mcman_end);
+        if (!mc_ok) {
+            SifLoadModule("rom0:SECRMAN", 0, NULL);
+            mc_ok = !load_buffer("mcman", irx_mcman, irx_mcman_end);
+        }
+        mc_ok = mc_ok && !load_buffer("mcserv", irx_mcserv, irx_mcserv_end);
+    }
+    if (pad_ok && (padInit(0) < 0 || padPortOpen(0, 0, pad_buffer) <= 0)) pad_ok = 0;
+    audio_ok = (SifLoadModule("rom0:LIBSD", 0, NULL) >= 0 || !load_buffer("libsd", irx_libsd, irx_libsd_end)) &&
+               !load_buffer("audsrv", irx_audsrv, irx_audsrv_end) && audsrv_init() == 0;
+    printf("ps2: IOP (disco) ready (pad %d, audio %d, mc %d)\n", pad_ok, audio_ok, mc_ok);
+}
 
 static void iop_start(void)
 {
@@ -151,6 +191,10 @@ static void iop_start(void)
     sbv_patch_enable_lmb();
     sbv_patch_disable_prefix_check();
     sbv_patch_fileio();
+    if (from_disc) {
+        iop_start_disc();
+        return;
+    }
     if (!load_buffer("iomanX", irx_iomanx, irx_iomanx_end) && !load_buffer("fileXio", irx_filexio, irx_filexio_end))
         fileXioInit();
     usb_ok = !load_buffer("usbd", irx_usbd, irx_usbd_end) && !load_buffer("bdm", irx_bdm, irx_bdm_end) &&
@@ -167,7 +211,7 @@ static void iop_start(void)
     if (pad_ok && (padInit(0) < 0 || padPortOpen(0, 0, pad_buffer) <= 0)) pad_ok = 0;
     audio_ok = !load_buffer("libsd", irx_libsd, irx_libsd_end) && !load_buffer("audsrv", irx_audsrv, irx_audsrv_end) &&
                audsrv_init() == 0;
-    printf("ps2: IOP ready (usb %d, pad %d, audio %d)\n", usb_ok, pad_ok, audio_ok);
+    printf("ps2: IOP ready (usb %d, pad %d, audio %d, mc %d, disco %d)\n", usb_ok, pad_ok, audio_ok, mc_ok, from_disc);
 }
 
 /* ---- video ---- */
@@ -358,6 +402,184 @@ static void poll_pad(void)
         pad_bits = (uint16_t)(0xFFFFu ^ status.btns);
 }
 
+/* ---- AJUSTES (ajustes.c, como no port de Super Mario World) ----
+ * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): três dígitos, a
+ * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9) e o
+ * vídeo (0 240p, 1 480p, 2 480i). Com o vídeo salvo, a tela AJUSTES começa
+ * sozinha em 5 s. ---- */
+static int ajustes_salvos; /* o arquivo existia, com o vídeo */
+/* O idioma: 0 português (languages/pt-br.txt), 1 inglês (o original). */
+static int idioma, sem_traducao;
+
+/* Onde está a tradução: ao lado do ELF (pendrive) ou na raiz da ISO, como
+ * PTBR.TXT (a ISO só aceita nomes de 8 letras, sem hífen). */
+static void caminho_traducao(char *path, size_t size)
+{
+    if (from_disc) snprintf(path, size, "cdrom0:\\PTBR.TXT;1");
+    else if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:languages/pt-br.txt");
+    else snprintf(path, size, "%s/languages/pt-br.txt", program_dir);
+}
+
+/* O idioma para o código do jogo (language.c), antes de o texto ser montado. */
+static void aplica_idioma(void)
+{
+    char path[320];
+    FILE *file;
+    caminho_traducao(path, sizeof(path));
+    sem_traducao = !(file = fopen(path, "rb"));
+    if (file) fclose(file);
+    if (sem_traducao) idioma = 1;
+    setenv("MEMORIES_LANGUAGE", idioma ? "0" : "6", 1); /* LANGUAGE_US ou LANGUAGE_PT_BR */
+    if (!idioma) setenv("MEMORIES_LANGUAGE_PACK", path, 1);
+    printf("ps2: idioma %s (%s)\n", idioma ? "ingles" : "portugues", sem_traducao ? "sem traducao" : path);
+}
+static void visual_path(char *path, size_t size)
+{
+    if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:YFM-VISUAL.txt");
+    else snprintf(path, size, "%s/YFM-VISUAL.txt", program_dir);
+}
+
+static void load_visual(void)
+{
+    char path[320];
+    FILE *file;
+    int c;
+    visual_path(path, sizeof(path));
+    if ((file = fopen(path, "rb"))) {
+        c = fgetc(file);
+        if (c >= '0' && c <= '2') GsGpu_SetVisual(c - '0');
+        c = fgetc(file);
+        if (c == '0' || c == '1') GsGpu_SetWide(c - '0');
+        c = fgetc(file);
+        if (c >= '0' && c <= '2') GsGpu_SetVideo(c == '2' ? VIDEO_480I : VIDEO_240P), ajustes_salvos = 1;
+        c = fgetc(file);
+        if (c == '0' || c == '1') idioma = c - '0';
+        fclose(file);
+    }
+    printf("ps2: suavizacao %d, 16:9 %d, video %d\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Video());
+}
+
+static void save_visual(void)
+{
+    char path[320];
+    FILE *file;
+    visual_path(path, sizeof(path));
+    if ((file = fopen(path, "wb"))) {
+        fputc('0' + GsGpu_Visual(), file);
+        fputc('0' + GsGpu_Wide(), file);
+        fputc('0' + GsGpu_Video(), file);
+        fputc('0' + idioma, file);
+        fputc('\n', file);
+        fclose(file);
+    }
+}
+
+/* ---- as telas AJUSTES e "A imagem apareceu?" ---- */
+extern unsigned char msx[]; /* a fonte 8x8 do libdebug do PS2SDK */
+static uint32_t *quadro; /* só durante os AJUSTES: a memória do port é apertada */
+
+static uint16_t botoes(void)
+{
+    poll_pad();
+    return pad_bits;
+}
+
+static void mostra(void)
+{
+    graph_wait_vsync();
+    GsGpu_ShowPicture(quadro);
+}
+
+/* No modo novo: X ou START em 10 s confirma que a TV mostra a imagem. */
+static int confirma_video(void)
+{
+    uint16_t held = botoes();
+    int frame;
+    for (frame = 0; frame < 10 * 60; ++frame) {
+        uint16_t agora = botoes(), apertou = agora & ~held;
+        held = agora;
+        if (frame > 20 && (apertou & (PAD_CROSS | PAD_START))) return 1;
+        ajustes_confirma(quadro, msx, GsGpu_Video(), 10 - frame / 60, frame);
+        mostra();
+    }
+    return 0;
+}
+
+/* AJUSTES: a tela aparece em 480i (toda TV mostra), e o modo escolhido
+ * vale para o jogo. Com tudo salvo, começa sozinha em 5 s, até apertarem
+ * um botão. Um modo de vídeo novo pergunta se a imagem apareceu. */
+static void tela_ajustes(void)
+{
+    static char situacao[64], aviso_texto[64];
+    const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma;
+    int contagem = ajustes_salvos;
+    const char *aviso = NULL;
+    aplica_idioma(); /* vê se a tradução está lá */
+    if (!pad_ok) return; /* sem controle não há o que escolher */
+    if (!(quadro = memalign(64, AJUSTES_W * AJUSTES_H * 4))) return;
+    boot_screen = 0;     /* daqui em diante o GS é do port, não da tela de texto */
+    GsGpu_Init();
+    if (from_disc) snprintf(situacao, sizeof(situacao), mc_ok ? "Saves: Memory Card (YFMPS2)" : "Sem Memory Card: os saves não ficam.");
+    else snprintf(situacao, sizeof(situacao), "Saves: pendrive, ao lado do jogo");
+    for (;;) {
+        Ajustes a = {contagem ? AJUSTE_JOGAR : AJUSTE_VIDEO, GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(), idioma,
+                     sem_traducao, -1, aviso, situacao};
+        uint16_t held = botoes();
+        int frame, saindo = -1;
+        GsGpu_SetVideo(VIDEO_480I);
+        for (frame = 0;; ++frame) {
+            uint16_t agora = botoes(), apertou = agora & ~held;
+            held = agora;
+            if (saindo < 0 && apertou) {
+                int dir = (apertou & PAD_LEFT) ? -1 : (apertou & PAD_RIGHT) ? 1 : 0;
+                contagem = 0;
+                if (apertou & (PAD_CROSS | PAD_START)) {
+                    saindo = frame;
+                } else if (apertou & (PAD_UP | PAD_DOWN)) {
+                    a.linha = (a.linha + ((apertou & PAD_UP) ? AJUSTE_LINHAS - 1 : 1)) % AJUSTE_LINHAS;
+                } else if (dir && a.linha != AJUSTE_JOGAR) {
+                    /* 240p e 480i. O 480p ficou de fora até ser conferido num
+                     * PS2: no PCSX2 a imagem sai com o dobro da altura. */
+                    if (a.linha == AJUSTE_VIDEO) a.video = a.video == VIDEO_480I ? VIDEO_240P : VIDEO_480I;
+                    if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
+                    if (a.linha == AJUSTE_SUAVE) a.suave = (a.suave + 3 + dir) % 3;
+                    if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;
+                    a.aviso = NULL;
+                }
+            }
+            if (saindo < 0 && contagem && frame >= 5 * 60) saindo = frame;
+            a.segundos = contagem ? 5 - frame / 60 : -1;
+            ajustes_desenha(quadro, msx, &a, frame);
+            if (saindo >= 0 && frame - saindo > 8) break;
+            mostra();
+        }
+        contagem = 0;
+        aviso = NULL;
+        GsGpu_SetWide(a.tela);
+        GsGpu_SetVisual(a.suave);
+        GsGpu_SetVideo(a.video);
+        idioma = a.idioma;
+        /* O modo já confirmado nesta TV entra direto; um novo pergunta. */
+        if (ajustes_salvos && a.video == salvo_video) break;
+        if (confirma_video()) break;
+        {
+            static const char *const nomes[] = {"240p", "480p", "480i"};
+            snprintf(aviso_texto, sizeof(aviso_texto), "A TV não mostrou o %s. Escolha outro.", nomes[a.video]);
+            aviso = aviso_texto;
+            GsGpu_SetVideo(ajustes_salvos ? salvo_video : VIDEO_240P);
+        }
+    }
+    if (!ajustes_salvos || GsGpu_Video() != salvo_video || GsGpu_Wide() != salvo_tela || GsGpu_Visual() != salvo_suave ||
+        idioma != salvo_idioma)
+        save_visual();
+    aplica_idioma();
+    printf("ps2: ajustes: video %d, 16:9 %d, suavizacao %d\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual());
+    ajustes_carregando(quadro, msx, 0);
+    mostra();
+    free(quadro);
+    quadro = NULL;
+}
+
 static int test_slot_ok(unsigned char *state) { (void)state; return 1; }
 static unsigned current_frame;
 /* Emulator runs (host:): a command file the developer writes while the game
@@ -409,8 +631,11 @@ static void step_live_input(void)
     else live_bits = 0;
 }
 
+/* Com L2 e R2 apertados juntos o controle é dos atalhos de vídeo (como no
+ * port do Mario): o jogo não vê nada. */
 uint16_t Platform_Pad(int port)
 {
+    if (port == 0 && (pad_bits & (PAD_L2 | PAD_R2)) == (PAD_L2 | PAD_R2)) return 0;
     return port == 0 ? (uint16_t)(pad_bits | live_bits | ControlsRuntime_Keyboard() | Platform_ScriptedBits(current_frame))
                      : 0;
 }
@@ -580,6 +805,22 @@ void Platform_Frame(unsigned frame)
             testing = 0;
         }
     }
+    if (live_bits == 0xFFFC && live_input) {
+        /* Depuração no PCSX2: a imagem exibida em host:shot.bin (largura e
+         * altura em 16 bits, depois os pixels CT16). */
+        uint16_t *shot = memalign(64, 448 * 256 * 2);
+        int sw, sh;
+        FILE *file;
+        live_bits = 0;
+        if (shot && GsGpu_ReadShown(shot, &sw, &sh) && (file = fopen("host:shot.bin", "wb"))) {
+            uint16_t size[2] = {(uint16_t)sw, (uint16_t)sh};
+            fwrite(size, 2, 2, file);
+            fwrite(shot, 2, (size_t)(sw * sh), file);
+            fclose(file);
+            printf("ps2: shot %dx%d at frame %u\n", sw, sh, frame);
+        }
+        free(shot);
+    }
     if (live_bits == 0xFFFE) {
         extern int GsGpu_FrameLog;
         live_bits = 0;
@@ -593,6 +834,22 @@ void Platform_Frame(unsigned frame)
         int combo = (pad_bits & 0x0F01) == 0x0F01;
         if (combo && !held) live_bits = 0xFFFF;
         held = combo;
+    }
+    {
+        /* Atalhos de vídeo, como no port do Mario: L2 + R2 + X troca 4:3 e
+         * 16:9; L2 + R2 + Círculo troca a suavização. Ficam salvos. */
+        static uint16_t before;
+        uint16_t now = pad_bits | live_bits, pressed = now & ~before;
+        before = now;
+        if ((now & (PAD_L2 | PAD_R2)) == (PAD_L2 | PAD_R2) && (now & PAD_SELECT) == 0) {
+            int changed = 0;
+            if (pressed & PAD_CROSS) GsGpu_SetWide(!GsGpu_Wide()), changed = 1;
+            if (pressed & PAD_CIRCLE) GsGpu_SetVisual((GsGpu_Visual() + 1) % 3), changed = 1;
+            if (changed) {
+                printf("ps2: suavizacao %d, 16:9 %d\n", GsGpu_Visual(), GsGpu_Wide());
+                save_visual();
+            }
+        }
     }
     if ((getenv("PS2_DUMP_FRAME") && frame == (unsigned)atoi(getenv("PS2_DUMP_FRAME"))) || live_bits == 0xFFFF) {
         live_bits = 0;
@@ -646,6 +903,13 @@ static const char *find_disc(void)
                                         "game/YFM.bin", "game/Yu-Gi-Oh! Forbidden Memories (USA).bin", NULL};
     static char path[512];
     const char *const *name;
+    if (from_disc) {
+        /* Na ISO o jogo é YFM.BIN na raiz do disco, pelo cdrom0: da BIOS. */
+        static const char *const on_disc[] = {"cdrom0:\\YFM.BIN;1", NULL};
+        for (name = on_disc; *name; name++)
+            if (exists(*name)) return *name;
+        return NULL;
+    }
     for (name = names; *name; name++) {
         snprintf(path, sizeof(path), "%s/%s", program_dir, *name);
         if (exists(path)) return path;
@@ -664,6 +928,7 @@ int main(int argc, char **argv)
     char user[300];
     static char *pc_argv[2] = {"memories-ps2", NULL};
     printf("ps2: Yu-Gi-Oh! Forbidden Memories PS2 port starting (%s)\n", argc > 0 ? argv[0] : "?");
+    from_disc = argc > 0 && argv[0] && !strncmp(argv[0], "cdrom", 5);
     iop_start();
     init_scr();
     boot_screen = 1;
@@ -680,7 +945,11 @@ int main(int argc, char **argv)
     else if ((slash = strchr(program_dir, ':'))) slash[1] = '\0';
     if (!strncmp(program_dir, "mass:", 5) || !strncmp(program_dir, "host", 4)) {
         /* fine as it is */
-    } else if (!strncmp(program_dir, "cdrom", 5) || !program_dir[0]) {
+    } else if (from_disc) {
+        /* Os arquivos do port (saves, YFM-VISUAL.txt) no cartão de memória. */
+        snprintf(program_dir, sizeof(program_dir), "mc0:/YFMPS2");
+        if (mc_ok) mkdir(program_dir, 0777);
+    } else if (!program_dir[0]) {
         snprintf(program_dir, sizeof(program_dir), "mass:/YFM");
     }
     Ps2_Stage("pasta: %s", program_dir);
@@ -695,11 +964,15 @@ int main(int argc, char **argv)
     }
     if (!disc) {
         char text[700];
-        snprintf(text, sizeof(text), "The disc image was not found.\n\n  Put YFM.bin (your Forbidden Memories USA .bin)\n"
-                                     "  next to the ELF:\n  %s/YFM.bin", program_dir);
+        if (from_disc)
+            snprintf(text, sizeof(text), "YFM.BIN was not found on this disc.\n\n  Make the ISO again with the port's\n"
+                                         "  creator page (criar-port.html).");
+        else
+            snprintf(text, sizeof(text), "The disc image was not found.\n\n  Put YFM.bin (your Forbidden Memories USA .bin)\n"
+                                         "  next to the ELF:\n  %s/YFM.bin", program_dir);
         Ps2_Fatal(text);
     }
-    if (strncmp(program_dir, "host", 4)) {
+    if (strncmp(program_dir, "host", 4) && !from_disc) { /* no cartão de memória, não: grava demais */
         snprintf(log_path, sizeof(log_path), "%s/YFM-LOG.txt", program_dir);
         if (freopen(log_path, "w", stdout)) {
             setvbuf(stdout, NULL, _IOLBF, 0);
@@ -709,6 +982,28 @@ int main(int argc, char **argv)
         }
     }
     Ps2_Stage("disco: %s", disc);
+    if (from_disc && !mc_ok) printf("ps2: sem cartao de memoria: os saves nao vao ficar\n");
+    if (from_disc) {
+        /* O cdrom0: não responde fstat: o tamanho do YFM.BIN pelo stat do
+         * caminho, ou pelo YFM.SIZ que o criador grava na ISO. */
+        unsigned long long size = 0;
+        struct stat st;
+        FILE *file;
+        if (!stat(disc, &st) && st.st_size > 0) size = (unsigned long long)st.st_size;
+        if (!size && (file = fopen("cdrom0:\\YFM.SIZ;1", "rb"))) {
+            char text[32] = {0};
+            if (fgets(text, sizeof(text), file)) size = strtoull(text, NULL, 10);
+            fclose(file);
+        }
+        if (size) {
+            char text[32];
+            snprintf(text, sizeof(text), "%llu", size);
+            setenv("MEMORIES_DISC_SIZE", text, 1);
+        }
+        printf("ps2: disco no CD, %llu bytes\n", size);
+    }
+    load_visual();
+    tela_ajustes();
 
     {
         struct timespec a, b;
@@ -728,6 +1023,22 @@ int main(int argc, char **argv)
         extern void Ps2_StartSampler(void);
         FILE *script = fopen("host:input.txt", "rb");
         live_input = 1;
+        {
+            /* host:env.txt: linhas CHAVE=VALOR para o código de PC (por
+             * exemplo MEMORIES_MODE_AT, que pula para um modo do jogo). */
+            FILE *env = fopen("host:env.txt", "rb");
+            char line[256];
+            while (env && fgets(line, sizeof(line), env)) {
+                char *eq = strchr(line, '='), *end = line + strcspn(line, "\r\n");
+                *end = 0;
+                if (eq && eq > line) {
+                    *eq = 0;
+                    setenv(line, eq + 1, 1);
+                    printf("ps2: env %s=%s\n", line, eq + 1);
+                }
+            }
+            if (env) fclose(env);
+        }
         setenv("PS2_GUEST_DUMP", "host:dumps/g", 1);
         setenv("MEMORIES_TRACE", "frames,disc,stub,window,clock,mods,input,model", 1);
         if (script) {
