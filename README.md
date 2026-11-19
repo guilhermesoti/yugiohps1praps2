@@ -150,3 +150,8 @@ O código do port de PC e a camada PS2 (`src/ps2/`, `ps2/`, `build.sh`) estão s
 decompilado do jogo pertence aos autores do [memories-decomp](https://github.com/krystalgamer/memories-decomp).
 *Yu-Gi-Oh!* e *Forbidden Memories* são da Konami; este repositório não tem o jogo nem seus dados, e
 você precisa da sua própria cópia. Projeto sem ligação com a Konami.
+
+## Comparar com o jogo original
+
+`tools/compara/` tira a mesma tela do jogo de PS1 (Mednafen) e do port (PCSX2) e mostra as duas lado a lado,
+com uma imagem só das diferenças. Veja `tools/compara/LEIA-ME.md`.
