@@ -14,7 +14,7 @@ for y in range(h):
         r, g, b = p & 31, (p >> 5) & 31, (p >> 10) & 31
         row += bytes(((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2)))
     rows.append(bytes(row))
-# 2x para enxergar melhor (e 16:9 mostrado com proporção certa só como referência)
+# no tamanho do quadro (1x); em 16:9 a largura é a anamórfica, sem esticar
 def chunk(t, d):
     c = struct.pack(">I", len(d)) + t + d
     return c + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)

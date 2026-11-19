@@ -2,7 +2,7 @@
  * do computador. Lê o .cue, confere o .bin, e monta a ISO (ISO 9660) ou o
  * aplicativo (ZIP com APPS/YFM_PS2/ para o OPL) usando o próprio arquivo do
  * jogo como pedaço do Blob, sem copiar os 500 MB para a memória.
- * Também roda no Node (tools/ps2/creator/test_core.mjs). */
+ * Também roda no Node (tools/ps2/creator/test_core.cjs). */
 const YFM = (() => {
   const RAW = 2352;              /* setor do .bin (MODE2/2352) */
   const ISO_SECTOR = 2048;
@@ -34,6 +34,7 @@ const YFM = (() => {
     const tracks = files.reduce((n, f) => n + f.tracks.length, 0);
     const problems = [];
     if (!files.length) problems.push("O .cue não lista nenhum arquivo.");
+    else if (!tracks) problems.push("O .cue não lista nenhuma faixa (TRACK).");
     else if (files.length > 1 || tracks > 1)
       problems.push("O .cue tem mais de uma faixa. O Forbidden Memories (USA) tem uma faixa só: use o .cue/.bin de um único arquivo.");
     else if (files[0].tracks[0] && files[0].tracks[0].mode !== "MODE2/2352")
@@ -270,21 +271,28 @@ const YFM = (() => {
       await w.write(data);
       await w.close();
     };
-    await put("YFM_PS2.ELF", elf);
-    await put("title.cfg", titleCfg());
+    /* A imagem do jogo primeiro e o title.cfg por último: se faltar espaço ou
+     * o pendrive sair no meio, o OPL não mostra um aplicativo pela metade. */
+    const w = await (await dir.getFileHandle("YFM.bin", { create: true })).createWritable();
+    try {
+      const CHUNK = 8 << 20;
+      for (let at = 0; at < bin.size; at += CHUNK) {
+        await w.write(await bin.slice(at, at + CHUNK).arrayBuffer());
+        if (progress) progress(Math.min(1, (at + CHUNK) / bin.size));
+      }
+      await w.close();
+    } catch (e) {
+      try { await w.abort(); } catch { /* já fechado */ }
+      throw e;
+    }
     if (ptbr) {
       const langs = await dir.getDirectoryHandle("languages", { create: true });
-      const w = await (await langs.getFileHandle("pt-br.txt", { create: true })).createWritable();
-      await w.write(ptbr);
-      await w.close();
+      const t = await (await langs.getFileHandle("pt-br.txt", { create: true })).createWritable();
+      await t.write(ptbr);
+      await t.close();
     }
-    const w = await (await dir.getFileHandle("YFM.bin", { create: true })).createWritable();
-    const CHUNK = 8 << 20;
-    for (let at = 0; at < bin.size; at += CHUNK) {
-      await w.write(await bin.slice(at, at + CHUNK).arrayBuffer());
-      if (progress) progress(Math.min(1, (at + CHUNK) / bin.size));
-    }
-    await w.close();
+    await put("YFM_PS2.ELF", elf);
+    await put("title.cfg", titleCfg());
   }
 
   return { RAW, GAME_ID, EXPECTED_SIZE, BOOT_NAME, ISO_NAME, APP_DIR, parseCue, checkBin, gunzipBase64, crcBlob, crcUpdate,

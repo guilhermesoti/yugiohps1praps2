@@ -327,20 +327,29 @@ static char *pack_listing(int language, size_t *length, char *origin, size_t ori
      * tradução dentro da ISO, lida pelo IOMAN da BIOS) não responde o fseek
      * até o fim. */
     for (;;) {
-        if (size + 65536 + 1 > capacity) {
+        size_t want;
+        if (capacity - size < 2) {
             char *bigger;
-            capacity = capacity ? capacity * 2 : 262144;
-            if (capacity > PACK_LIMIT || !(bigger = realloc(text, capacity))) {
-                free(text);
-                fclose(file);
-                return NULL;
+            size_t next = capacity ? capacity * 2 : 262144;
+            if (capacity >= PACK_LIMIT) {
+                /* Cheio no limite: só serve se o arquivo acabou aqui (como
+                 * antes, menos de PACK_LIMIT bytes). */
+                if (fgetc(file) == EOF && !ferror(file)) break;
+                goto fail;
             }
+            if (next > PACK_LIMIT) next = PACK_LIMIT;
+            if (!(bigger = realloc(text, next))) goto fail;
             text = bigger;
+            capacity = next;
         }
-        got = fread(text + size, 1, 65536, file);
+        want = capacity - size - 1; /* sempre sobra o byte do '\0' */
+        if (want > 65536) want = 65536;
+        got = fread(text + size, 1, want, file);
         size += got;
-        if (got < 65536) break;
+        if (got < want) break;
     }
+    /* Um erro de leitura no meio não vira uma tradução pela metade. */
+    if (ferror(file)) goto fail;
     fclose(file);
     if (!size) {
         free(text);
@@ -353,6 +362,10 @@ static char *pack_listing(int language, size_t *length, char *origin, size_t ori
     *length = n;
     snprintf(origin, origin_size, "%s", path);
     return text;
+fail:
+    free(text);
+    fclose(file);
+    return NULL;
 }
 
 /* Where a language's text can come from, tried in order: the pack, then

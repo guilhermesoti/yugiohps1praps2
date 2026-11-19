@@ -179,11 +179,14 @@ int DsInit(void)
                 lseek(disc, 0, SEEK_SET);
             }
 #ifdef MEMORIES_PS2
-            if (getenv("MEMORIES_DISC_SIZE")) {
+            {
                 /* Boot por ISO pelo cdrom0: da BIOS (platform_ps2.c): o tamanho
-                 * que a plataforma achou (o YFM.SIZ do criador). */
-                off_t told = (off_t)strtoull(getenv("MEMORIES_DISC_SIZE"), NULL, 10);
-                if (told > 0) info.st_size = told;
+                 * que a plataforma achou (o YFM.SIZ do criador), se for um número. */
+                const char *told_text = getenv("MEMORIES_DISC_SIZE");
+                char *end = NULL;
+                unsigned long long told = told_text ? strtoull(told_text, &end, 10) : 0;
+                if (told_text && end != told_text && *end == '\0' && told > 0 && told / RAW_SECTOR <= INT32_MAX)
+                    info.st_size = (off_t)told;
             }
 #endif
             if (info.st_size < 0 || (uint64_t)info.st_size / RAW_SECTOR > INT32_MAX) {

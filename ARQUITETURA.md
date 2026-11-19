@@ -133,7 +133,7 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   `languages/pt-br.txt`, feita do texto espanhol do PAL (mesmos códigos e caixas; layout PAL). As
   letras com acento (Ã, Õ, Ç, Ê...) a fonte do port desenha da letra base com a marca (glyphs.c).
   A tela AJUSTES escolhe por `MEMORIES_LANGUAGE` (6 ou 0); na ISO o arquivo é `PTBR.TXT` na raiz
-  (`MEMORIES_LANGUAGE_PACK`), porque a ISO só aceita nomes de 8 letras sem hífen. O pacote é lido
+  (`MEMORIES_LANGUAGE_FILE`), porque a ISO só aceita nomes de 8 letras sem hífen. O pacote é lido
   em blocos até o fim (o `cdrom0:` não responde fseek até o fim). No jogo, L2+R2+X e L2+R2+Círculo (com L2+R2 apertados o jogo não vê o controle).
 - **16:9** (`GsGpu_SetWide`, a mesma ideia do `soft_gpu.c` do PC): a área de desenho de tela cheia
   (320 de largura) ganha uma imagem 428 de largura nas páginas 408–463 do GS (os 4 últimos slots do
@@ -149,7 +149,7 @@ Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo
 
 - `release/criar-port.html` é gerado pelo `build.sh` (`tools/ps2/make_creator.py`): a página
   (`creator/creator.html`) com o núcleo (`creator/core.js`) e o ELF (gzip + base64) embutidos. O
-  núcleo monta a ISO 9660 (SYSTEM.CNF, `RTGM_014.11` = o ELF, `YFM.SIZ`, `YFM.BIN`) ou o ZIP do
+  núcleo monta a ISO 9660 (SYSTEM.CNF, `RGPM_001.01` = o ELF, `YFM.SIZ`, `YFM.BIN`) ou o ZIP do
   aplicativo, usando o arquivo do jogador como pedaço do Blob. `creator/test_core.cjs` testa no Node.
 - ELF iniciado de `cdrom0:` (`iop_start_disc` em `platform_ps2.c`, como o port de Super Mario
   World): **nada de iomanX/fileXio/cdfs nem USB** (no OPL o USB é do próprio OPL, e o IOP dele é

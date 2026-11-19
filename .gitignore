@@ -16,3 +16,5 @@ YFM-LOG.txt
 tools/compara/saida/
 # cópia da tradução para revisão (a usada pelo jogo é languages/pt-br.txt)
 Tradução ptbr/
+# Revisões do Antigravity e do Codex (~/PROJETOS/revisar.sh)
+revisoes/

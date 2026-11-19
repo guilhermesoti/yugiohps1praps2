@@ -39,11 +39,14 @@ def main():
     if os.path.exists(ptbr_path):
         with open(ptbr_path, "rb") as f:
             ptbr = base64.b64encode(gzip.compress(f.read(), 9, mtime=0)).decode("ascii")
+    if "</script" in core.lower():
+        sys.exit("criar-port: core.js tem '</script', que fecharia a tag na página")
     for key, value in (("/*__CORE__*/", core), ("__ELF_B64__", b64), ("__PTBR_B64__", ptbr),
                        ("__VERSION__", version())):
         if key not in page:
             sys.exit(f"criar-port: {key} não está em creator.html")
         page = page.replace(key, value, 1)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(page)
     print(f"{out_path}: {len(page) / 1048576:.1f} MB (ELF de {len(elf) / 1048576:.1f} MB embutido)")

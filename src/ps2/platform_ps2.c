@@ -411,9 +411,9 @@ static void poll_pad(void)
 }
 
 /* ---- AJUSTES (ajustes.c, como no port de Super Mario World) ----
- * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): três dígitos, a
- * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9) e o
- * vídeo (0 240p, 1 480p, 2 480i). Com o vídeo salvo, a tela AJUSTES começa
+ * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): quatro dígitos, a
+ * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9), o
+ * vídeo (0 240p, 1 480p, 2 480i) e o idioma (0 português, 1 inglês). Com o vídeo salvo, a tela AJUSTES começa
  * sozinha em 5 s. ---- */
 static int ajustes_salvos; /* o arquivo existia, com o vídeo */
 /* O idioma: 0 português (languages/pt-br.txt), 1 inglês (o original). */
@@ -427,7 +427,7 @@ static void caminho_traducao(char *path, size_t size)
         /* Na raiz (a página criar-port) ou em LANG/ (tools/ps2/iso/montar_iso). */
         FILE *file = fopen("cdrom0:\\PTBR.TXT;1", "rb");
         if (file) fclose(file);
-        snprintf(path, size, file ? "cdrom0:\\PTBR.TXT;1" : "cdrom0:\\LANG\\PTBR.TXT;1");
+        snprintf(path, size, "%s", file ? "cdrom0:\\PTBR.TXT;1" : "cdrom0:\\LANG\\PTBR.TXT;1");
     }
     else if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:languages/pt-br.txt");
     else snprintf(path, size, "%s/languages/pt-br.txt", program_dir);
@@ -444,8 +444,32 @@ static void aplica_idioma(void)
     if (sem_traducao) idioma = 1;
     setenv("MEMORIES_LANGUAGE", idioma ? "0" : "6", 1); /* LANGUAGE_US ou LANGUAGE_PT_BR */
     if (!idioma) setenv("MEMORIES_LANGUAGE_FILE", path, 1);
+    else unsetenv("MEMORIES_LANGUAGE_FILE");
     printf("ps2: idioma %s (%s)\n", idioma ? "ingles" : "portugues", sem_traducao ? "sem traducao" : path);
 }
+/* O primeiro cartão de memória (slot 1, depois o 2) em que dá para gravar na
+ * pasta YFMPS2; sem nenhum, o do slot 1. Os saves e o YFM-VISUAL.txt usam o
+ * mesmo cartão (antes a configuração ia sempre para o slot 1). */
+static int cartao_gravavel(void)
+{
+    int slot;
+    for (slot = 0; slot < 2; slot++) {
+        char dir[32], probe_path[48];
+        FILE *probe;
+        snprintf(dir, sizeof(dir), "mc%d:/YFMPS2", slot);
+        mkdir(dir, 0777);
+        snprintf(probe_path, sizeof(probe_path), "%s/PROBE.TXT", dir);
+        probe = fopen(probe_path, "wb");
+        printf("ps2: memory card %d: %s (errno %d)\n", slot, probe ? "ok" : "sem acesso", probe ? 0 : errno);
+        if (probe) {
+            fclose(probe);
+            remove(probe_path);
+            return slot;
+        }
+    }
+    return 0;
+}
+
 static void visual_path(char *path, size_t size)
 {
     if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:YFM-VISUAL.txt");
@@ -970,8 +994,7 @@ int main(int argc, char **argv)
         /* fine as it is */
     } else if (from_disc) {
         /* Os arquivos do port (saves, YFM-VISUAL.txt) no cartão de memória. */
-        snprintf(program_dir, sizeof(program_dir), "mc0:/YFMPS2");
-        if (mc_ok) mkdir(program_dir, 0777);
+        snprintf(program_dir, sizeof(program_dir), "mc%d:/YFMPS2", mc_ok ? cartao_gravavel() : 0);
     } else if (!program_dir[0]) {
         snprintf(program_dir, sizeof(program_dir), "mass:/YFM");
     }
@@ -1058,24 +1081,7 @@ int main(int argc, char **argv)
     }
     if (disc_mode) {
         /* The memory card in slot 1 (or 2): mc0:/YFMPS2. */
-        int slot, made = -1;
-        for (slot = 0; slot < 2; slot++) {
-            char dir[32], probe_path[48];
-            FILE *probe;
-            int r;
-            snprintf(dir, sizeof(dir), "mc%d:/YFMPS2", slot);
-            r = mkdir(dir, 0777);
-            snprintf(probe_path, sizeof(probe_path), "%s/PROBE.TXT", dir);
-            probe = fopen(probe_path, "wb");
-            printf("ps2: memory card %d: %s (errno %d)\n", slot, probe ? "ok" : "sem acesso", probe ? 0 : errno);
-            if (probe) {
-                fclose(probe);
-                remove(probe_path);
-                made = slot;
-                break;
-            }
-        }
-        slot = made < 0 ? 0 : made;
+        int slot = cartao_gravavel();
         snprintf(user, sizeof(user), "mc%d:/YFMPS2", slot);
         {
             /* O icone e o titulo da pasta no navegador do PS2 (sem eles o

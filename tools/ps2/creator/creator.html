@@ -297,7 +297,9 @@ const ELF_GZ_B64 = "__ELF_B64__";
 /* A tradução (languages/pt-br.txt), que vai junto na ISO e no aplicativo. */
 const PTBR_GZ_B64 = "__PTBR_B64__";
 const $ = (id) => document.getElementById(id);
-const state = { bin: null, cue: null, cueInfo: null, check: null, format: null, elf: null };
+const state = { bin: null, cue: null, cueInfo: null, check: null, format: null, elf: null, ticket: 0, url: null };
+/* Texto que vem de fora (nomes de arquivo, o .cue, mensagens de erro) entra como texto, nunca como HTML. */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const mb = (n) => (n / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " MB";
 
 function go(step) {
@@ -321,8 +323,8 @@ function setFile(id, file, ok, label) {
 function verdict(kind, icon, title, items = [], warn = []) {
   const v = $("verdict");
   v.className = "verdict show " + kind;
-  v.innerHTML = `<div class="big">${icon}</div><div><b>${title}</b>${
-    items.length || warn.length ? `<ul>${items.map((t) => `<li>${t}</li>`).join("")}${warn.map((t) => `<li class="warn">${t}</li>`).join("")}</ul>` : ""}</div>`;
+  v.innerHTML = `<div class="big">${icon}</div><div><b>${esc(title)}</b>${
+    items.length || warn.length ? `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join("")}${warn.map((t) => `<li class="warn">${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
 }
 
 async function takeFiles(list) {
@@ -335,11 +337,16 @@ async function takeFiles(list) {
 }
 
 async function review() {
+  /* Cada escolha de arquivo começa uma conferência nova; a resposta de uma
+   * conferência antiga (que terminou depois) é jogada fora. */
+  const ticket = ++state.ticket;
   const problems = [];
   state.check = null;
   $("to2").disabled = true;
   if (state.cue) {
-    state.cueInfo = YFM.parseCue(await state.cue.text());
+    const cueText = await state.cue.text();
+    if (ticket !== state.ticket) return;
+    state.cueInfo = YFM.parseCue(cueText);
     const cp = [...state.cueInfo.problems];
     if (state.bin && state.cueInfo.binName && state.cueInfo.binName.toLowerCase() !== state.bin.name.toLowerCase())
       cp.push(`O .cue aponta para “${state.cueInfo.binName}”, mas o .bin escolhido é “${state.bin.name}”.`);
@@ -354,6 +361,7 @@ async function review() {
   setFile("fBin", state.bin, null, "lendo…");
   verdict("busy", "⏳", "Conferindo o disco…");
   const check = await YFM.checkBin(state.bin);
+  if (ticket !== state.ticket) return;
   setFile("fBin", state.bin, check.ok, check.ok ? check.id : "inválido");
   problems.unshift(...check.errors);
   if (!state.cue) problems.push("Falta o .cue do disco.");
@@ -390,12 +398,14 @@ $("back2").onclick = () => go(2);
 function prepareStep3() {
   const iso = state.format === "iso";
   $("summary").innerHTML = `
-    <div><small>Jogo</small>${state.bin.name}</div>
+    <div><small>Jogo</small>${esc(state.bin.name)}</div>
     <div><small>Formato</small>${iso ? "ISO (disco)" : "Aplicativo (APPS)"}</div>
     <div><small>Vai gerar</small>${iso ? YFM.ISO_NAME : "YFM_PS2_app.zip"} · ~${mb(state.check.size + 16e6)}</div>
     <div><small>Idioma</small>${PTBR_GZ_B64 ? "Português (tradução inclusa)" : "Inglês"}</div>`;
   $("makeDirect").hidden = iso || !window.showDirectoryPicker;
   $("make").textContent = iso ? "Criar a ISO" : "Baixar o ZIP";
+  $("make").hidden = false;
+  $("make").disabled = $("makeDirect").disabled = false;
   $("done").classList.remove("show");
   $("bar").classList.remove("show");
   $("status").textContent = "";
@@ -419,7 +429,9 @@ async function elf() {
 
 function download(blob, name) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
+  if (state.url) URL.revokeObjectURL(state.url); /* o arquivo anterior sai da memória */
+  state.url = URL.createObjectURL(blob);
+  a.href = state.url;
   a.download = name;
   a.className = "gold";
   a.textContent = "Baixar de novo";
@@ -433,7 +445,8 @@ function download(blob, name) {
 function finish(kind) {
   progress(1);
   $("status").textContent = "";
-  $("makeActions").hidden = true;
+  /* O "Voltar" continua, para criar o outro formato sem recarregar a página. */
+  $("make").hidden = $("makeDirect").hidden = true;
   const how = {
     iso: `<h3>Como jogar</h3><ol>
       <li>Copie a ISO para a pasta <code>CD</code> do pendrive (FAT32 ou exFAT). Com a pasta <code>ART</code> do pacote na raiz do pendrive, a capa aparece no OPL.</li>
@@ -456,7 +469,7 @@ function finish(kind) {
 
 function fail(e) {
   console.error(e);
-  $("status").innerHTML = `<span style="color:var(--err)">Não deu certo: ${e && e.message ? e.message : e}</span>`;
+  $("status").innerHTML = `<span style="color:var(--err)">Não deu certo: ${esc(e && e.message ? e.message : e)}</span>`;
   $("make").disabled = $("makeDirect").disabled = false;
 }
 

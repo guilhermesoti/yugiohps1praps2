@@ -1061,9 +1061,12 @@ static void screen_for(int key, int w, int h)
     graph_set_screen(x, y, w, h);
 }
 
+/* O modo de vídeo que o PCRTC tem agora (display() só o refaz quando muda).
+ * O GsGpu_Init esquece: o graph_initialize põe o modo padrão. */
+static int mode_w = -1, mode_h = -1, mode_key = -1;
+
 static void display(int fbp, int fbw, int psm, int x, int y, int w, int h, int interlace)
 {
-    static int mode_w = -1, mode_h, mode_key = -1;
     /* Imagens de 480 linhas (raras) ficam no entrelaçado de quadro inteiro;
      * as outras, no modo escolhido nos AJUSTES. */
     int key = interlace ? 99 : video_mode;
@@ -1330,6 +1333,7 @@ void GsGpu_Init(void)
     dma_channel_initialize(DMA_CHANNEL_GIF, NULL, 0);
     dma_channel_fast_waits(DMA_CHANNEL_GIF);
     graph_initialize(0, 320, 240, PSM_CT16, 0, 0);
+    mode_w = mode_h = mode_key = -1;
     gpu.clip_x2 = 1023;
     gpu.clip_y2 = 511;
     environment();
