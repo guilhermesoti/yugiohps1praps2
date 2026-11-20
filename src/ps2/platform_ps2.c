@@ -1321,9 +1321,16 @@ int main(int argc, char **argv)
                     if (have == (long)(icons[k].end - icons[k].start))
                         continue;
                 }
-                if ((f = fopen(path, "wb"))) {
-                    fwrite(icons[k].start, 1, (size_t)(icons[k].end - icons[k].start), f);
-                    fclose(f);
+                {
+                    /* Apaga antes: o cartão não encurta um arquivo maior. */
+                    size_t tamanho = (size_t)(icons[k].end - icons[k].start), gravou = 0;
+                    remove(path);
+                    if ((f = fopen(path, "wb"))) {
+                        gravou = fwrite(icons[k].start, 1, tamanho, f);
+                        if (fclose(f)) gravou = 0;
+                    }
+                    printf("ps2: icone %s: %s (errno %d)\n", path, gravou == tamanho ? "gravado" : "FALHOU",
+                           gravou == tamanho ? 0 : errno);
                 }
             }
         }
