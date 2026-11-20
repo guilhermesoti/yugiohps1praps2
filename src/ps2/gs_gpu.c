@@ -1155,7 +1155,7 @@ static int draw_overlay(int x, int y) { return draw_overlay_to(compose_page, x, 
  * (overscan); com o tamanho abaixo de 100% cada quadro mostrado é
  * redesenhado menor, centrado, com borda preta, numa de duas imagens de
  * saída (uma é mostrada enquanto a outra é desenhada). O PCRTC só amplia
- * por inteiros, por isso o desenho com textura (bilinear) no próprio GS.
+ * por inteiros, por isso o desenho com textura (sem filtro) no próprio GS.
  * Saída: em 4:3, as duas imagens de composição (páginas 472 e 492, FBW 5);
  * em 16:9 (até 426 de largura, FBW 7, 28 páginas cada) 472 e 376, com o
  * cache de texturas em 13 slots. Com menu do port por cima, a imagem 1:1 é
@@ -1208,7 +1208,10 @@ static void mostra_reduzida(int src_page, int src_fbw, int src_psm, int sx, int 
     }
     reg(R_TEX0, (uint64_t)(src_page * 32) | ((uint64_t)src_fbw << 14) | ((uint64_t)src_psm << 20) | ((uint64_t)tw << 26) |
                     (9ull << 30) | (1ull << 35)); /* TCC 0 (só a cor), TFX decal */
-    reg(R_TEX1, (1ull << 5) | (1ull << 6));       /* bilinear */
+    /* Sem filtro (ponto mais próximo): com o bilinear a imagem reduzida
+     * ficava borrada no console (pelo AV, 20/11/2026); assim os pixels e o
+     * texto ficam nítidos, e só algumas linhas/colunas somem ou dobram. */
+    reg(R_TEX1, 0);
     reg(R_CLAMP, 2 | (2 << 2) | ((uint64_t)sx << 4) | ((uint64_t)(sx + sw - 1) << 14) | ((uint64_t)sy << 24) |
                      ((uint64_t)(sy + sh - 1) << 34));
     reg(R_PRIM, 6 | (1 << 4) | (1 << 8)); /* sprite com textura, UV */

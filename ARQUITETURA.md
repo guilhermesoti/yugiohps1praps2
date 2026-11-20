@@ -139,7 +139,7 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   mostrada no DISPLAY do PCRTC (`screen_for`), sem custo e sem perder nitidez. O quadro reduzido só
   pinta de preto as bordas (apagar tudo antes dava faixas pretas correndo na TV). Abaixo de 100%,
   `mostra_reduzida` desenha cada quadro mostrado (o do jogo, o largo do 16:9, o vídeo de 24 bits e a
-  própria tela AJUSTES) como um sprite com textura bilinear, menor e centrado, numa de duas imagens
+  própria tela AJUSTES) como um sprite com textura sem filtro (o bilinear borrava no console), menor e centrado, numa de duas imagens
   de saída: em 4:3 as páginas de composição 472/492; em 16:9 472 e 376 (o cache cai para 13 slots).
   Com menu do port por cima, a imagem 1:1 é montada antes nas páginas dos vídeos (128). Em 100% o
   caminho é o de antes. `YFM-VISUAL.txt` ganhou quatro letras: largura e altura (`a` = 100%, `k` = 80%), posição x e y (`A` = -16, `I` = 0, `Q` = 16).
