@@ -1332,6 +1332,10 @@ int main(int argc, char **argv)
     }
     setenv("MEMORIES_USER_DIR", user, 1);
     setenv("MEMORIES_NO_MONITOR", "1", 1);
+    /* Os vários decks do port de PC ("Build Deck: which deck?") ficam
+     * desligados: a tela é larga demais para 320 pontos e não existe no PS1.
+     * Montar o deck abre direto, como no jogo original (20/11/2026). */
+    setenv("MEMORIES_DECK_SLOTS", "0", 1);
     if (!strncmp(program_dir, "host:", 5)) {
         extern void Ps2_StartSampler(void);
         FILE *script = fopen("host:input.txt", "rb");
