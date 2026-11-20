@@ -55,6 +55,8 @@ static int compose_page = COMPOSE_PAGE;
 #define OFFSET 1024      /* XYOFFSET: primitive coordinates are window + 1024 */
 
 #define GS_DISPFB1 ((volatile uint64_t *)0x12000070)
+#define GS_DISPLAY1 ((volatile uint64_t *)0x12000080)
+#define GS_DISPLAY2 ((volatile uint64_t *)0x120000A0)
 #define GS_DISPFB2 ((volatile uint64_t *)0x12000090)
 #define GS_CSR ((volatile uint64_t *)0x12001000)
 
@@ -1059,6 +1061,20 @@ static void screen_for(int key, int w, int h)
      * embaixo na TV). */
     if ((key == 0 || key == 2) && h > 224) y = -((h - 224) / 2);
     graph_set_screen(x, y, w, h);
+    if (key == 2) {
+        /* 480i com o quadro de 240 linhas (FFMD campo): a TV tem 480 linhas,
+         * então cada linha do quadro vale duas (MAGV 1) e a altura na tela é
+         * 2h. O libgraph não amplia (448 / 240 = 1) e mandava só h linhas:
+         * no console a imagem ocupava a metade de cima da TV (o PCSX2 estica
+         * e escondia). Os mesmos números da gsKit (port do SMW): NTSC
+         * começa na linha 26 do campo, 50 em linhas de quadro; o ajuste y
+         * acima também dobra. */
+        int magh = 2560 / w;
+        uint64_t display = (uint64_t)(652 + x) | ((uint64_t)(50 + 2 * y) << 12) | ((uint64_t)(magh - 1) << 23) |
+                           ((uint64_t)1 << 27) | ((uint64_t)(2560 - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
+        *GS_DISPLAY1 = display;
+        *GS_DISPLAY2 = display;
+    }
 }
 
 /* O modo de vídeo que o PCRTC tem agora (display() só o refaz quando muda).
