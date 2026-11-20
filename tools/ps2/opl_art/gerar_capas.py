@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""(Desde 20/11/2026 o release/ART usa as artes da caixa original, escolhidas
-pelo autor: rodar este script substitui por estas de arte própria.)
+"""(Desde 20/11/2026 o release/ART sai do capas_ps2.py: as artes da caixa
+original, escolhidas pelo autor, com jeito de port de PS2. Rodar este script
+substitui por estas de arte própria.)
 
 Capas do port para o OPL (pasta ART do pendrive), arte original da
 Retrogames: sol alado dourado, moldura e o título em texto. Nada da arte da
