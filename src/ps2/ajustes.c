@@ -272,7 +272,7 @@ static void painel(const Ajustes *a) {
   case AJUSTE_TAMANHO:
     texto(tx, l1, "Diminui a imagem na TV.", BRANCO, 1);
     texto(tx, l2, "Ajuste até ver toda a moldura.", TEXTO, 1);
-    texto(tx, l3, "Vale para o jogo e esta tela.", CINZA, 1);
+    texto(tx, l3, "No jogo: L2+R2 e cima/baixo.", CINZA, 1);
     break;
   default:
     texto(tx, l1, "X ou START começa. Fica tudo salvo.", BRANCO, 1);

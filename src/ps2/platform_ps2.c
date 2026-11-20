@@ -887,7 +887,9 @@ void Platform_Frame(unsigned frame)
     }
     {
         /* Atalhos de vídeo, como no port do Mario: L2 + R2 + X troca 4:3 e
-         * 16:9; L2 + R2 + Círculo troca a suavização. Ficam salvos. */
+         * 16:9; L2 + R2 + Círculo troca a suavização; L2 + R2 + cima/baixo
+         * aumenta/diminui o tamanho na TV (de 3 em 3%, 85 a 100), vendo o
+         * próprio jogo. Ficam salvos. */
         static uint16_t before;
         uint16_t now = pad_bits | live_bits, pressed = now & ~before;
         before = now;
@@ -895,8 +897,13 @@ void Platform_Frame(unsigned frame)
             int changed = 0;
             if (pressed & PAD_CROSS) GsGpu_SetWide(!GsGpu_Wide()), changed = 1;
             if (pressed & PAD_CIRCLE) GsGpu_SetVisual((GsGpu_Visual() + 1) % 3), changed = 1;
+            if (pressed & (PAD_UP | PAD_DOWN)) {
+                int t = (100 - GsGpu_Tamanho()) / 3 + ((pressed & PAD_UP) ? -1 : 1);
+                t = t < 0 ? 0 : t >= AJUSTE_TAMANHOS ? AJUSTE_TAMANHOS - 1 : t;
+                if (AJUSTE_PORCENTO(t) != GsGpu_Tamanho()) GsGpu_SetTamanho(AJUSTE_PORCENTO(t)), changed = 1;
+            }
             if (changed) {
-                printf("ps2: suavizacao %d, 16:9 %d\n", GsGpu_Visual(), GsGpu_Wide());
+                printf("ps2: suavizacao %d, 16:9 %d, tamanho %d%%\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Tamanho());
                 save_visual();
             }
         }
