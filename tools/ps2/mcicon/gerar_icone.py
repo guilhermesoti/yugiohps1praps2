@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""icon.sys e yfm.icn (moeda 3D com o Olho de Rá) da pasta YFMPS2 do memory card (o navegador do PS2 mostra
+"""icon.sys e yfm.icn (o Enigma do Milênio em 3D, com o olho; antes uma moeda com o Olho de Rá) da pasta YFMPS2 do memory card (o navegador do PS2 mostra
 título e ícone em vez de "dados corrompidos"). O ícone é um quadrado plano
 com a arte release/ART/RGPM_001.01_ICO.png, parado.
 
@@ -127,12 +127,74 @@ def icn(texture_path=None):
     return bytes(data)
 
 
+ENIGMA = os.path.join(ROOT, "tools", "ps2", "opl_art", "caixa_original", "SLUS_014.11_BG.png")
+# O triângulo do Enigma do Milênio no fundo da caixa (640x480): os dois cantos
+# de cima e a ponta de baixo.
+TRI = ((80, 222), (522, 222), (300, 455))
+
+
+def enigma_texture():
+    """O Enigma do Milênio (com o olho) recortado da arte, em 128x128: o
+    triângulo ocupa a textura toda (cantos de cima em (0,0) e (1,0), ponta
+    em (0,5, 1))."""
+    from PIL import ImageEnhance
+    bg = Image.open(ENIGMA).convert("RGB")
+    (x0, y0), (x1, _), (_, y2) = TRI
+    im = bg.crop((x0, y0, x1, y2)).resize((128, 128), Image.LANCZOS)
+    im = ImageEnhance.Contrast(im).enhance(1.15)
+    im = ImageEnhance.Sharpness(im).enhance(1.6)
+    return im
+
+
+def icn_enigma():
+    """Prisma triangular: as duas faces com o Enigma e as laterais douradas.
+    Maior que a moeda: 4 de largura e uns 2,6 de altura (o SMW tem 2,9 x 2,4)."""
+    img = enigma_texture()
+    W, T = 2.05, 0.22                        # meia largura, meia espessura
+    H = 2 * W * (TRI[2][1] - TRI[0][1]) / (TRI[1][0] - TRI[0][0]) * 1.25  # um pouco mais alto que a arte
+    top, tip = -0.35 - H, -0.35              # y para cima é negativo
+    A, B, C = (-W, top), (W, top), (0.0, tip)
+    uv = {A: (0.01, 0.01), B: (0.99, 0.01), C: (0.5, 0.99)}
+    gold = (0.5, 0.18)                       # um ponto dourado da face, para as laterais
+    verts = []
+    for z, nz, order in ((-T, -1.0, (A, B, C)), (T, 1.0, (A, C, B))):
+        for P in order:
+            u, v = uv[P]
+            if nz > 0: u = 1 - u             # atrás, espelhado (o olho fica certo dos dois lados)
+            verts.append((P[0], P[1], z, 0.0, 0.0, nz, u, v))
+    for P, Q in ((A, B), (B, C), (C, A)):    # laterais
+        ex, ey = Q[0] - P[0], Q[1] - P[1]
+        n = (ey, -ex); ln = (n[0] ** 2 + n[1] ** 2) ** 0.5; n = (n[0] / ln, n[1] / ln)
+        for (x, y), z in ((P, -T), (Q, -T), (P, T), (Q, -T), (Q, T), (P, T)):
+            verts.append((x, y, z, n[0], n[1], 0.0) + gold)
+    return img, verts
+
+
+def pack_icn(img, verts):
+    fx = lambda v: int(round(v * 4096))
+    data = bytearray()
+    data += struct.pack("<IIIfI", 0x010000, 1, 0x07, 1.0, len(verts))
+    for x, y, z, nx, ny, nz, u, v in verts:
+        data += struct.pack("<4h", fx(x), fx(y), fx(z), 0)
+        data += struct.pack("<4h", fx(nx), fx(ny), fx(nz), 0)
+        data += struct.pack("<2h", fx(u), fx(v))
+        data += struct.pack("<4B", 0x80, 0x80, 0x80, 0x80)
+    data += struct.pack("<IIfII", 0x01, 1, 1.0, 0, 1)
+    data += struct.pack("<IIII", 0, 1, 0, 0)
+    for y in range(128):
+        for x in range(128):
+            r, g, bb = img.getpixel((x, y))
+            data += struct.pack("<H", (r >> 3) | ((g >> 3) << 5) | ((bb >> 3) << 10) | 0x8000)
+    img.save(os.path.join(OUT, "textura_preview.png"))
+    return bytes(data)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, "icon.sys"), "wb") as f:
         f.write(icon_sys("Yu-Gi-Oh! FM", "PS2 Retrogames", "yfm.icn"))
     with open(os.path.join(OUT, "yfm.icn"), "wb") as f:
-        f.write(icn(ART))
+        f.write(pack_icn(*icn_enigma()))
     print("icone em", OUT)
 
 

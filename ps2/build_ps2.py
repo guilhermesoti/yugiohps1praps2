@@ -144,6 +144,10 @@ def compile_unit(job):
     flags = list(flags) + UNIT_FLAGS.get(source, [])
     path = os.path.join(build_src, os.path.relpath(source, "src")) if not source.startswith("/") else source
     newest = os.path.getmtime(path)
+    if source.endswith("irx.S"):
+        # .incbin: o ícone do memory card (src/ps2/mcicon) também conta.
+        for name in ("icon.sys", "yfm.icn"):
+            newest = max(newest, os.path.getmtime(os.path.join(ROOT, "src/ps2/mcicon", name)))
     if os.path.exists(obj) and os.path.getmtime(obj) >= newest and os.path.getmtime(obj) >= HEADERS_TIME:
         return
     os.makedirs(os.path.dirname(obj), exist_ok=True)
