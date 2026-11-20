@@ -723,7 +723,7 @@ static int tela_trapacas(void)
     return mudou;
 }
 
-/* AJUSTES: a tela aparece em 240p (toda TV mostra, pelo AV também), e o modo escolhido
+/* AJUSTES: a tela aparece em 480i (toda TV mostra, pelo AV e pelo HDMI), e o modo escolhido
  * vale para o jogo. Com tudo salvo, começa sozinha em 5 s, até apertarem
  * um botão. Um modo de vídeo novo pergunta se a imagem apareceu. */
 static void tela_ajustes(void)
@@ -749,7 +749,10 @@ static void tela_ajustes(void)
                      GsGpu_PosicaoX(), GsGpu_PosicaoY(), trapacas_ligadas(&trapacas)};
         uint16_t held = botoes();
         int frame, saindo = -1;
-        GsGpu_SetVideo(VIDEO_240P);
+        /* 480i: o único modo que toda TV mostra, pelo AV e também pelo
+         * adaptador HDMI (que não passa 240p para muitas TVs; com a tela em
+         * 240p não dava nem para escolher o 480p). 20/11/2026. */
+        GsGpu_SetVideo(VIDEO_480I);
         for (frame = 0;; ++frame) {
             uint16_t agora = botoes(), apertou = agora & ~held;
             held = agora;
