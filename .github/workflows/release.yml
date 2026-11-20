@@ -34,3 +34,5 @@ jobs:
           python3 tools/ps2/make_creator.py release/YFM_PS2.ELF pacote/YFM/criar-port.html
           (cd pacote && zip -r "../YFM_PS2_${TAG}.zip" YFM ART)
           gh release upload "$TAG" "YFM_PS2_${TAG}.zip" --clobber
+          # O criador também solto na página da release, para baixar só ele.
+          gh release upload "$TAG" pacote/YFM/criar-port.html --clobber
