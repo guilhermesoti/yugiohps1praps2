@@ -7,4 +7,6 @@ cd "$(dirname "$0")"
 python3 ps2/build_ps2.py -j "${JOBS:-4}"
 mkdir -p release
 cp tmp/ps2/YFM_PS2.ELF release/YFM_PS2.ELF
-echo "pronto: release/YFM_PS2.ELF"
+# A página que cria o port (ISO ou aplicativo) a partir do .bin/.cue do jogador.
+python3 tools/ps2/make_creator.py release/YFM_PS2.ELF release/criar-port.html
+echo "pronto: release/YFM_PS2.ELF e release/criar-port.html"

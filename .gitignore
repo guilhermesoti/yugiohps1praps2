@@ -7,6 +7,14 @@ __pycache__/
 *.cue
 *.iso
 *.img
+# a página do criador: o build.sh e a Action da release a geram (tem o ELF dentro)
+release/criar-port.html
 # saves e logs gerados pelo jogo
 YFM-SAVE/
 YFM-LOG.txt
+# fotos da comparação com o original
+tools/compara/saida/
+# cópia da tradução para revisão (a usada pelo jogo é languages/pt-br.txt)
+Tradução ptbr/
+# Revisões do Antigravity e do Codex (~/PROJETOS/revisar.sh)
+revisoes/

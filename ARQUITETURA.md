@@ -117,8 +117,73 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   (páginas 472–491 e 492–511), então a que está na tela nunca é escrita. A VRAM do jogo nunca é
   alterada.
 
+- **Melhorias visuais** (`GsGpu_SetVisual`): modo 0 original, 1 sem o pontilhado (dithering) do
+  PS1, 2 (padrão) sem pontilhado + filtro bilinear. O filtro vale só para polígonos texturizados
+  não semitransparentes e sem janela de textura (modelos 3D, campo, cartas girando); sprites,
+  texto e menus continuam nítidos. Com o filtro: meio texel a mais no UV, `REGION_CLAMP` no
+  retângulo de texels do polígono (sem sangrar do atlas) e teste de alfa `>= 0x20` nas bordas
+  recortadas.
+- **Tela AJUSTES** (`ajustes.c`, o visual e o fluxo do port de Super Mario World, `formato.c` de lá):
+  antes do jogo, desenhada na CPU num quadro 320x240 de 32 bits e mostrada pelo GS
+  (`GsGpu_ShowPicture`, páginas 128–167) sempre em 240p. Vídeo 240p/480p (`GsGpu_SetVideo`). No
+  480p e no 480i o DISPLAY é escrito à mão em `screen_for` (MAGV 1, altura 2h): o libgraph mandava
+  só metade das linhas (no console o 480i ficava na metade de cima da TV). O 480i saiu da tela
+  em 20/11/2026 (pelo AV o 240p fica melhor); um `YFM-VISUAL.txt` antigo com 480i vira 240p. Tela e
+  suavização e idioma. Modo novo pede confirmação. `YFM-VISUAL.txt`: quatro dígitos (suavização,
+  16:9, vídeo, idioma: 0 português, 1 inglês).
+- **Suavização**: saiu da tela AJUSTES e do atalho L2+R2+Círculo em 20/11/2026 (pedido do usuário);
+  `visual_mode` fica sempre 0 (como no PS1). O código dos modos 1 e 2 continua em `gs_gpu.c`.
+- **Posição na TV** (`GsGpu_SetPosicao`, -16 a 16 pontos/linhas, de 2 em 2): só o começo da área
+  mostrada no DISPLAY do PCRTC (`screen_for`), sem custo e sem perder nitidez. Tela AJUSTES: X na
+  linha Posição e as setas; no jogo, L2+R2 + setas. O ajuste de **tamanho** (altura/largura,
+  `GsGpu_SetTamanho`/`mostra_reduzida`) existiu em 20/11/2026 e saiu da tela no mesmo dia: em 240p
+  diminuir a altura ou embaça (bilinear) ou some com linhas (sem filtro). O código continua em
+  `gs_gpu.c`, parado em 100%. `YFM-VISUAL.txt`: quatro dígitos + `aa` (o tamanho, sempre 100%) + a
+  posição x e y (`A` = -16, `I` = 0, `Q` = 16).
+- **Fundo temático**: `tema_carrega()` (platform_ps2.c) lê do disco 8 artes de cartas do
+  `WA_MRG.MRG` (LBA 10102; carta n em 1478656 + (n-1)*14336: 102x96, 8 bits, CLUT do PS1 em +9792)
+  e `ajustes.c` (`mosaico`) desenha fileiras que rolam, escurecidas para o índigo; `faixa()`
+  escurece atrás do texto solto. As artes são liberadas antes do jogo (`tema_libera`).
+- **Trapaças** (`trapacas.c`/`.h`, teste em `tests/ps2/trapacas_teste.c`): as prontas usam
+  `pc/debug/cheats.c` do projeto base (as opções `SET_CHEAT_*` e, uma vez quando o save fica
+  ativo, `Cheats_TopUpAllCards`/`UnlockAllFreeDuelists`/`SetStarchips`); os códigos GameShark
+  (80/30/D0/D1/E0/E1) são escritos a cada quadro (`trapacas_quadro`, depois de `Cheats_Frame`) em
+  `MEMORIES_GUEST_RAM`, onde os globais do jogo estão nos endereços do PS1. Sem `TRAPACAS.TXT`
+  valem as de fábrica (`trapacas_padrao`). As ligadas ficam em `YFM-TRAPACAS.txt`, pelo nome
+  (nome repetido no TXT é recusado). Testado no PCSX2: StarChips 999999 e PV 9999 no jogo.
+- **Português** (`LANGUAGE_PT_BR` em `src/pc/text/language.c`): a tradução do port,
+  `languages/pt-br.txt`, feita do texto espanhol do PAL (mesmos códigos e caixas; layout PAL). As
+  letras com acento (Ã, Õ, Ç, Ê...) a fonte do port desenha da letra base com a marca (glyphs.c).
+  A tela AJUSTES escolhe por `MEMORIES_LANGUAGE` (6 ou 0); na ISO o arquivo é `PTBR.TXT` na raiz
+  (`MEMORIES_LANGUAGE_FILE`), porque a ISO só aceita nomes de 8 letras sem hífen. O pacote é lido
+  em blocos até o fim (o `cdrom0:` não responde fseek até o fim). No jogo, L2+R2+X e L2+R2+Círculo (com L2+R2 apertados o jogo não vê o controle).
+- **16:9** (`GsGpu_SetWide`, a mesma ideia do `soft_gpu.c` do PC): a área de desenho de tela cheia
+  (320 de largura) ganha uma imagem 428 de largura nas páginas 408–463 do GS (os 4 últimos slots do
+  cache de texturas, que cai para 15 slots). Cada primitiva é desenhada de novo nela, deslocada 54
+  px: polígonos e linhas sem o corte do 4:3, sprites com o corte (menos preenchimentos de largura
+  inteira). Cargas, fills e cópias são espelhados no centro por cópia local do GS. Ela é exibida
+  com 426 px (MAGH 5). Com um menu do port aberto, a tela volta ao 4:3. A VRAM do jogo não muda.
+
 Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo 24 bits / menus,
 168–471 cache de texturas (19 slots), 472–491 composição dos menus.
+
+## 7b. Boot por ISO (criador `tools/ps2/creator/`)
+
+- `release/criar-port.html` é gerado pelo `build.sh` (`tools/ps2/make_creator.py`): a página
+  (`creator/creator.html`) com o núcleo (`creator/core.js`) e o ELF (gzip + base64) embutidos. O
+  núcleo monta a ISO 9660 (SYSTEM.CNF, `RGPM_001.01` = o ELF, `YFM.SIZ`, `YFM.BIN`) ou o ZIP do
+  aplicativo, usando o arquivo do jogador como pedaço do Blob. `creator/test_core.cjs` testa no Node.
+- ELF iniciado de `cdrom0:` (`iop_start_disc` em `platform_ps2.c`, como o port de Super Mario
+  World): **nada de iomanX/fileXio/cdfs nem USB** (no OPL o USB é do próprio OPL, e o IOP dele é
+  montado para os módulos da BIOS); XSIO2MAN/XPADMAN/XMCMAN/XMCSERV da BIOS (os do SDK só sem
+  eles). O newlib fica no fio: o jogo é `cdrom0:\YFM.BIN;1`. O cdrom0: não responde fstat: o tamanho
+  vem do `YFM.SIZ` (`MEMORIES_DISC_SIZE`, `libds.c`). Os arquivos do port ficam em `mc0:/YFMPS2`, e
+  não há `YFM-LOG.txt` (gravaria demais no cartão).
+- As duas formas de montar a ISO dão boot: a página `criar-port.html` (tradução em `PTBR.TXT` na
+  raiz, `YFM.SIZ` com o tamanho) e `tools/ps2/iso/montar_iso` (tradução em `LANG/PTBR.TXT`; o
+  tamanho sai do `libds.c`, por lseek ou por busca). Testado no PCSX2: AJUSTES, abertura, jogo em
+  português e saves em `mc0:/YFMPS2` com o ícone (o cartão precisa estar formatado). No OPL de
+  verdade falta testar.
 
 ## 8. Disco, módulos e o bug das batalhas 3D
 
@@ -162,6 +227,9 @@ Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo
 - No PCSX2 com o ELF iniciado de `host:`: entrada por arquivo (`input.txt`, `cmd.txt`), dumps de
   VRAM/RAM e amostrador de desempenho (`platform_ps2.c`).
 
+- No PCSX2 com `host:`: `host:env.txt` (linhas `CHAVE=VALOR`, por exemplo `MEMORIES_MODE_AT`) e,
+  no `cmd.txt`, o passo `1:FFFC` grava a imagem exibida em `host:shot.bin`
+  (`tools/ps2_shot2png.py shot.bin foto.png` converte).
 - **L1 + R1 + L2 + R2 + SELECT** no console grava `YFM-GSVRAM.bin` e `YFM-CPUVRAM.bin` (a VRAM do
   GS e a da CPU, 1024×512 16 bits) ao lado do ELF: para comparar o que o console desenhou com o
   emulador quando uma imagem sai diferente.

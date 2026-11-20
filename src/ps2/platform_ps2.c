@@ -36,7 +36,14 @@ extern int fileXioInit(void); /* newlib then goes through fileXio (iomanX device
 #include "pc/cards/cards.h"
 #include "ps2.h"
 #include "pc/saves/save_menu.h"
+#include "pc/saves/deck_menu.h"
 #include "gs_gpu.h"
+#include "ajustes.h"
+#include "trapacas.h"
+#include "pc/debug/cheats.h"
+#include "pc/platform/settings.h"
+#include "pc/memory_map.h"
+#include <graph.h>
 
 extern int Memories_PcMain(int argc, char **argv);
 extern void Cheats_Frame(void);
@@ -139,11 +146,46 @@ static int load_buffer(const char *name, unsigned char *start, unsigned char *en
 }
 
 static int pad_ok, audio_ok, usb_ok, mc_ok, cd_ok;
-/* Booted from a disc (an ISO in OPL, or a burned disc): the PS1 image is on
- * the disc (cdfs:/YFM.BIN), the saves go to the memory card, and the USB
- * drivers are left alone (in OPL the stick belongs to OPL's own driver). */
+/* O ELF veio de um disco (uma ISO no OPL ou no PCSX2, um CD gravado): o jogo
+ * é lido do próprio disco pelo cdrom0: da BIOS (YFM.BIN), e os saves e a
+ * configuração vão para o cartão de memória. O USB não é carregado: no OPL
+ * ele é do próprio OPL, que lê a ISO do pendrive. */
+static int from_disc;
+/* disc_mode: 1 com from_disc; 2 no teste do cartão no emulador (host: com
+ * mctest.txt). Os saves vão para mc0:/YFMPS2 (ou mc1:) nos dois. */
 static int disc_mode;
 static unsigned char pad_buffer[256] __attribute__((aligned(64)));
+
+/* Boot por ISO (OPL no modo ISO, PCSX2, CD gravado): como o port de Super
+ * Mario World faz. Nada de iomanX/fileXio/cdfs nem USB: no OPL o USB é do
+ * próprio OPL, e o IOP dele é montado para os módulos da BIOS, como nos
+ * jogos comerciais. O newlib fica no fio (IOMAN da BIOS), que lê o disco
+ * por cdrom0: e o cartão por mc0:. Os módulos do SDK embutidos só entram
+ * se a BIOS não tiver os X. */
+static void iop_start_disc(void)
+{
+    if (SifLoadModule("rom0:XSIO2MAN", 0, NULL) >= 0) {
+        pad_ok = SifLoadModule("rom0:XPADMAN", 0, NULL) >= 0 ? 2 : !load_buffer("padman", irx_padman, irx_padman_end);
+        mc_ok = SifLoadModule("rom0:XMCMAN", 0, NULL) >= 0;
+        if (!mc_ok) { /* o XMCMAN precisa do SECRMAN */
+            SifLoadModule("rom0:SECRMAN", 0, NULL);
+            mc_ok = SifLoadModule("rom0:XMCMAN", 0, NULL) >= 0;
+        }
+        mc_ok = mc_ok && SifLoadModule("rom0:XMCSERV", 0, NULL) >= 0;
+    } else {
+        pad_ok = !load_buffer("sio2man", irx_sio2man, irx_sio2man_end) && !load_buffer("padman", irx_padman, irx_padman_end);
+        mc_ok = !load_buffer("mcman", irx_mcman, irx_mcman_end);
+        if (!mc_ok) {
+            SifLoadModule("rom0:SECRMAN", 0, NULL);
+            mc_ok = !load_buffer("mcman", irx_mcman, irx_mcman_end);
+        }
+        mc_ok = mc_ok && !load_buffer("mcserv", irx_mcserv, irx_mcserv_end);
+    }
+    if (pad_ok && (padInit(0) < 0 || padPortOpen(0, 0, pad_buffer) <= 0)) pad_ok = 0;
+    audio_ok = (SifLoadModule("rom0:LIBSD", 0, NULL) >= 0 || !load_buffer("libsd", irx_libsd, irx_libsd_end)) &&
+               !load_buffer("audsrv", irx_audsrv, irx_audsrv_end) && audsrv_init() == 0;
+    printf("ps2: IOP (disco) ready (pad %d, audio %d, mc %d)\n", pad_ok, audio_ok, mc_ok);
+}
 
 static void iop_start(void)
 {
@@ -156,6 +198,10 @@ static void iop_start(void)
     sbv_patch_enable_lmb();
     sbv_patch_disable_prefix_check();
     sbv_patch_fileio();
+    if (from_disc) {
+        iop_start_disc();
+        return;
+    }
     if (!load_buffer("iomanX", irx_iomanx, irx_iomanx_end) && !load_buffer("fileXio", irx_filexio, irx_filexio_end))
         fileXioInit();
     if (disc_mode) {
@@ -368,6 +414,415 @@ static void poll_pad(void)
         pad_bits = (uint16_t)(0xFFFFu ^ status.btns);
 }
 
+/* ---- AJUSTES (ajustes.c, como no port de Super Mario World) ----
+ * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): quatro dígitos e quatro letras, a
+ * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9), o
+ * vídeo (0 240p, 1 480p; o 2, 480i, saiu e vira 240p), o idioma (0 português, 1 inglês) e,
+ * desde 20/11/2026, o tamanho na TV: largura e altura, uma letra cada ('a' = 100%, 'k' = 80%), e a
+ * posição: x e y, uma letra cada ('A' = -16, 'I' = 0, 'Q' = 16). Com o vídeo salvo, a tela AJUSTES começa
+ * sozinha em 5 s. ---- */
+static int ajustes_salvos; /* o arquivo existia, com o vídeo */
+/* O idioma: 0 português (languages/pt-br.txt), 1 inglês (o original). */
+static int idioma, sem_traducao;
+
+/* Onde está a tradução: ao lado do ELF (pendrive) ou na raiz da ISO, como
+ * PTBR.TXT (a ISO só aceita nomes de 8 letras, sem hífen). */
+static void caminho_traducao(char *path, size_t size)
+{
+    if (from_disc) {
+        /* Na raiz (a página criar-port) ou em LANG/ (tools/ps2/iso/montar_iso). */
+        FILE *file = fopen("cdrom0:\\PTBR.TXT;1", "rb");
+        if (file) fclose(file);
+        snprintf(path, size, "%s", file ? "cdrom0:\\PTBR.TXT;1" : "cdrom0:\\LANG\\PTBR.TXT;1");
+    }
+    else if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:languages/pt-br.txt");
+    else snprintf(path, size, "%s/languages/pt-br.txt", program_dir);
+}
+
+/* O idioma para o código do jogo (language.c), antes de o texto ser montado. */
+static void aplica_idioma(void)
+{
+    char path[320];
+    FILE *file;
+    caminho_traducao(path, sizeof(path));
+    sem_traducao = !(file = fopen(path, "rb"));
+    if (file) fclose(file);
+    if (sem_traducao) idioma = 1;
+    setenv("MEMORIES_LANGUAGE", idioma ? "0" : "6", 1); /* LANGUAGE_US ou LANGUAGE_PT_BR */
+    if (!idioma) setenv("MEMORIES_LANGUAGE_FILE", path, 1);
+    else unsetenv("MEMORIES_LANGUAGE_FILE");
+    printf("ps2: idioma %s (%s)\n", idioma ? "ingles" : "portugues", sem_traducao ? "sem traducao" : path);
+}
+/* O primeiro cartão de memória (slot 1, depois o 2) em que dá para gravar na
+ * pasta YFMPS2; sem nenhum, o do slot 1. Os saves e o YFM-VISUAL.txt usam o
+ * mesmo cartão (antes a configuração ia sempre para o slot 1). */
+static int cartao_gravavel(void)
+{
+    int slot;
+    for (slot = 0; slot < 2; slot++) {
+        char dir[32], probe_path[48];
+        FILE *probe;
+        snprintf(dir, sizeof(dir), "mc%d:/YFMPS2", slot);
+        mkdir(dir, 0777);
+        snprintf(probe_path, sizeof(probe_path), "%s/PROBE.TXT", dir);
+        probe = fopen(probe_path, "wb");
+        printf("ps2: memory card %d: %s (errno %d)\n", slot, probe ? "ok" : "sem acesso", probe ? 0 : errno);
+        if (probe) {
+            fclose(probe);
+            remove(probe_path);
+            return slot;
+        }
+    }
+    return 0;
+}
+
+static void visual_path(char *path, size_t size)
+{
+    if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:YFM-VISUAL.txt");
+    else snprintf(path, size, "%s/YFM-VISUAL.txt", program_dir);
+}
+
+static void load_visual(void)
+{
+    char path[320];
+    FILE *file;
+    int c;
+    visual_path(path, sizeof(path));
+    GsGpu_SetVisual(0);
+    if ((file = fopen(path, "rb"))) {
+        c = fgetc(file);
+        (void)c; /* a suavização saiu (20/11/2026): sempre como no PS1 */
+        c = fgetc(file);
+        if (c == '0' || c == '1') GsGpu_SetWide(c - '0');
+        c = fgetc(file);
+        /* 1 = 480p; 0 = 240p; 2 (o 480i das versões anteriores, que saiu) vira 240p. */
+        if (c >= '0' && c <= '2') GsGpu_SetVideo(c == '1' ? VIDEO_480P : VIDEO_240P), ajustes_salvos = 1;
+        c = fgetc(file);
+        if (c == '0' || c == '1') idioma = c - '0';
+        {
+            /* Largura e altura: uma letra cada, 'a' = 100%, 'k' = 80% (de 2 em 2). */
+            int lh = fgetc(file), lv = fgetc(file);
+            int px, py;
+            (void)lh, (void)lv; /* o tamanho saiu (20/11/2026): sempre 100% */
+            /* Posição: uma letra cada, 'A' = -16, 'I' = 0, 'Q' = 16 (de 2 em 2). */
+            px = fgetc(file), py = fgetc(file);
+            if (px >= 'A' && px <= 'Q' && py >= 'A' && py <= 'Q')
+                GsGpu_SetPosicao(AJUSTE_POS_PASSO * (px - 'I'), AJUSTE_POS_PASSO * (py - 'I'));
+        }
+        fclose(file);
+    }
+    printf("ps2: suavizacao %d, 16:9 %d, video %d\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Video());
+}
+
+static void save_visual(void)
+{
+    char path[320];
+    FILE *file;
+    visual_path(path, sizeof(path));
+    if ((file = fopen(path, "wb"))) {
+        fputc('0' + GsGpu_Visual(), file);
+        fputc('0' + GsGpu_Wide(), file);
+        fputc('0' + GsGpu_Video(), file);
+        fputc('0' + idioma, file);
+        fputs("aa", file); /* o tamanho (saiu): 100% x 100% */
+        fputc('I' + GsGpu_PosicaoX() / AJUSTE_POS_PASSO, file);
+        fputc('I' + GsGpu_PosicaoY() / AJUSTE_POS_PASSO, file);
+        fputc('\n', file);
+        fclose(file);
+    }
+}
+
+/* ---- as telas AJUSTES e "A imagem apareceu?" ---- */
+extern unsigned char msx[]; /* a fonte 8x8 do libdebug do PS2SDK */
+static uint32_t *quadro; /* só durante os AJUSTES: a memória do port é apertada */
+
+static uint16_t botoes(void)
+{
+    poll_pad();
+    return pad_bits;
+}
+
+static void mostra(void)
+{
+    graph_wait_vsync();
+    GsGpu_ShowPicture(quadro);
+}
+
+/* No modo novo: X ou START em 10 s confirma que a TV mostra a imagem. */
+static int confirma_video(void)
+{
+    uint16_t held = botoes();
+    int frame;
+    for (frame = 0; frame < 10 * 60; ++frame) {
+        uint16_t agora = botoes(), apertou = agora & ~held;
+        held = agora;
+        if (frame > 20 && (apertou & (PAD_CROSS | PAD_START))) return 1;
+        ajustes_confirma(quadro, msx, GsGpu_Video(), 10 - frame / 60, frame);
+        mostra();
+    }
+    return 0;
+}
+
+/* ---- O tema das telas antes do jogo: artes de cartas do disco do jogador ----
+ * As artes ficam no \DATA\WA_MRG.MRG, que começa no setor 10102 do
+ * Forbidden Memories (USA) (o único disco que o port aceita): a da carta n
+ * em 1478656 + (n - 1) * 14336, 102 x 96 pontos de 8 bits, e a paleta de
+ * 256 cores logo depois, em + 9792 (docs/asset-catalog.json). O .bin tem
+ * setores de 2352 bytes (MODE2/2352): os 2048 de dados começam no 24. */
+static const int tema_cartas[] = {1, 35, 82, 22, 38, 21, 58, 69}; /* Olhos Azuis, Mago Negro, Olhos
+                                                                    Vermelhos, Caveira, Gaia, Exódia,
+                                                                    Kuriboh, Dragão Milenar */
+#define TEMA_N ((int)(sizeof(tema_cartas) / sizeof(tema_cartas[0])))
+static uint8_t *tema_idx;
+static uint16_t *tema_pal;
+static const char *tema_disco; /* main(): o .bin achado */
+
+static int le_mrg(FILE *f, uint32_t pos, void *destino, size_t n)
+{
+    uint8_t *d = destino;
+    while (n) {
+        uint32_t setor = 10102 + pos / 2048, dentro = pos % 2048;
+        size_t parte = 2048 - dentro < n ? 2048 - dentro : n;
+        if (fseek(f, (long)setor * 2352 + 24 + (long)dentro, SEEK_SET) || fread(d, 1, parte, f) != parte) return 0;
+        d += parte, pos += (uint32_t)parte, n -= parte;
+    }
+    return 1;
+}
+
+static void tema_carrega(void)
+{
+    FILE *f;
+    int k, ok = 1;
+    if (!tema_disco || !(f = fopen(tema_disco, "rb"))) return;
+    tema_idx = malloc((size_t)TEMA_N * ARTE_W * ARTE_H);
+    tema_pal = malloc((size_t)TEMA_N * 256 * 2);
+    for (k = 0; ok && tema_idx && tema_pal && k < TEMA_N; k++) {
+        uint32_t pos = 1478656u + (uint32_t)(tema_cartas[k] - 1) * 14336u;
+        ok = le_mrg(f, pos, tema_idx + (size_t)k * ARTE_W * ARTE_H, (size_t)ARTE_W * ARTE_H) &&
+             le_mrg(f, pos + 9792, tema_pal + (size_t)k * 256, 512);
+    }
+    fclose(f);
+    if (ok && tema_idx && tema_pal) {
+        ajustes_artes(tema_idx, tema_pal, TEMA_N);
+        printf("ps2: tema: %d artes de cartas do disco\n", TEMA_N);
+    } else {
+        printf("ps2: tema: as artes não foram lidas (fundo de estrelas)\n");
+        free(tema_idx), free(tema_pal);
+        tema_idx = NULL, tema_pal = NULL;
+    }
+}
+
+static void tema_libera(void)
+{
+    ajustes_artes(NULL, NULL, 0);
+    free(tema_idx), free(tema_pal);
+    tema_idx = NULL, tema_pal = NULL;
+}
+
+/* ---- Trapaças (trapacas.h): as prontas e os códigos do TRAPACAS.TXT ----
+ * O TRAPACAS.TXT fica ao lado do ELF (pendrive), na raiz da ISO (a página
+ * criar-port o põe lá) ou em host:. As ligadas vão para o YFM-TRAPACAS.txt,
+ * junto do YFM-VISUAL.txt (no cartão de memória, pela ISO). */
+static Trapacas trapacas;
+static int trapacas_txt = -1; /* trapaças vindas do TRAPACAS.TXT; -1 sem o arquivo */
+
+static long le_arquivo(const char *path, char *buf, size_t max)
+{
+    FILE *f = fopen(path, "rb");
+    size_t n = 0, got;
+    if (!f) return -1;
+    while (n < max && (got = fread(buf + n, 1, max - n < 2048 ? max - n : 2048, f)) > 0) n += got;
+    fclose(f);
+    return (long)n;
+}
+
+static void trapacas_lig_path(char *path, size_t size)
+{
+    if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:YFM-TRAPACAS.txt");
+    else snprintf(path, size, "%s/YFM-TRAPACAS.txt", program_dir);
+}
+
+static void trapacas_carrega(void)
+{
+    char path[320], *buf = malloc(TRAPACAS_BYTES + 1);
+    long n;
+    trapacas_inicia(&trapacas);
+    if (!buf) return;
+    if (from_disc) snprintf(path, sizeof(path), "cdrom0:\\TRAPACAS.TXT;1");
+    else if (!strncmp(program_dir, "host", 4)) snprintf(path, sizeof(path), "host:TRAPACAS.TXT");
+    else snprintf(path, sizeof(path), "%s/TRAPACAS.TXT", program_dir);
+    n = le_arquivo(path, buf, TRAPACAS_BYTES);
+    /* Arquivo maior que o buffer: a última linha pode ter vindo pela metade
+     * (meia trapaça); fica só até a última linha inteira. */
+    if (n == TRAPACAS_BYTES)
+        while (n > 0 && buf[n - 1] != '\n') --n;
+    if (n < 0) trapacas_le(&trapacas, trapacas_padrao, strlen(trapacas_padrao));
+    trapacas_txt = n < 0 ? -1 : trapacas_le(&trapacas, buf, (size_t)n);
+    trapacas_lig_path(path, sizeof(path));
+    n = le_arquivo(path, buf, TRAPACAS_BYTES);
+    if (n > 0) trapacas_liga_salvas(&trapacas, buf, (size_t)n);
+    free(buf);
+    printf("ps2: trapacas: %d na lista (%d do TRAPACAS.TXT), %d ligadas\n", trapacas.n, trapacas_txt,
+           trapacas_ligadas(&trapacas));
+}
+
+static void trapacas_salva(void)
+{
+    char path[320], texto[TRAPACA_MAX * (TRAPACA_NOME * 2 + 2) + 1];
+    size_t n = trapacas_texto_ligadas(&trapacas, texto, sizeof(texto));
+    FILE *f;
+    trapacas_lig_path(path, sizeof(path));
+    if ((f = fopen(path, "wb"))) {
+        fwrite(texto, 1, n, f);
+        fclose(f);
+    }
+}
+
+/* A cada quadro do jogo: as prontas que são opções do projeto base, as que
+ * mexem no save (uma vez, quando um jogo novo ou um save fica ativo) e os
+ * códigos GameShark. */
+static void trapacas_quadro(void)
+{
+    static int carregado_antes, pendente;
+    int carregado, v;
+    if (!trapacas.n) return;
+    v = trapacas.t[TRAPACA_COMPRAS].ligada;
+    if (Settings_Get(SET_CHEAT_FREE_SPENDING) != v) Settings_Set(SET_CHEAT_FREE_SPENDING, v);
+    v = trapacas.t[TRAPACA_MAO_CPU].ligada;
+    if (Settings_Get(SET_CHEAT_SHOW_HAND) != v) Settings_Set(SET_CHEAT_SHOW_HAND, v);
+    v = trapacas.t[TRAPACA_PV_9999].ligada ? 9999 : 8000;
+    if (Settings_Get(SET_CHEAT_LIFE_POINTS) != v) Settings_Set(SET_CHEAT_LIFE_POINTS, v);
+    carregado = Cheats_SaveLoaded();
+    if (carregado && !carregado_antes) pendente = 1;
+    carregado_antes = carregado;
+    if (pendente && carregado && !Cheats_ChestOnScreen()) {
+        /* O baú é copiado pelo BUILD DECK enquanto está aberto: espera fechar. */
+        if (trapacas.t[TRAPACA_CARTAS].ligada) Cheats_TopUpAllCards(3);
+        if (trapacas.t[TRAPACA_DUELISTAS].ligada) Cheats_UnlockAllFreeDuelists();
+        if (trapacas.t[TRAPACA_STARCHIPS].ligada) Cheats_SetStarchips(999999);
+        pendente = 0;
+    }
+    trapacas_aplica_codigos(&trapacas, (uint8_t *)(uintptr_t)MEMORIES_GUEST_RAM); /* só as ligadas */
+}
+
+/* A lista das trapaças (X na linha Trapaças): volta 1 se mudou alguma. */
+static int tela_trapacas(void)
+{
+    int cursor = 0, mudou = 0, frame;
+    uint16_t held = botoes();
+    for (frame = 0;; ++frame) {
+        uint16_t agora = botoes(), apertou = agora & ~held;
+        held = agora;
+        if (apertou & PAD_UP) cursor = (cursor + trapacas.n - 1) % trapacas.n;
+        if (apertou & PAD_DOWN) cursor = (cursor + 1) % trapacas.n;
+        if (apertou & PAD_CROSS) trapacas.t[cursor].ligada = !trapacas.t[cursor].ligada, mudou = 1;
+        if (apertou & (PAD_CIRCLE | PAD_START | PAD_TRIANGLE)) break;
+        ajustes_trapacas(quadro, msx, &trapacas, cursor, trapacas_txt, frame);
+        mostra();
+    }
+    return mudou;
+}
+
+/* AJUSTES: a tela aparece em 240p (toda TV mostra, pelo AV também), e o modo escolhido
+ * vale para o jogo. Com tudo salvo, começa sozinha em 5 s, até apertarem
+ * um botão. Um modo de vídeo novo pergunta se a imagem apareceu. */
+static void tela_ajustes(void)
+{
+    static char situacao[64], aviso_texto[64];
+    const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma,
+              salvo_px = GsGpu_PosicaoX(),
+              salvo_py = GsGpu_PosicaoY();
+    int contagem = ajustes_salvos, trapacas_mudou = 0;
+    const char *aviso = NULL;
+    aplica_idioma(); /* vê se a tradução está lá */
+    trapacas_carrega();
+    if (!pad_ok) return; /* sem controle não há o que escolher */
+    if (!(quadro = memalign(64, AJUSTES_W * AJUSTES_H * 4))) return;
+    tema_carrega();
+    boot_screen = 0;     /* daqui em diante o GS é do port, não da tela de texto */
+    GsGpu_Init();
+    if (from_disc) snprintf(situacao, sizeof(situacao), mc_ok ? "Saves: Memory Card (YFMPS2)" : "Sem Memory Card: os saves não ficam.");
+    else snprintf(situacao, sizeof(situacao), "Saves: pendrive, ao lado do jogo");
+    for (;;) {
+        Ajustes a = {contagem ? AJUSTE_JOGAR : AJUSTE_VIDEO, GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(), idioma,
+                     sem_traducao, -1, aviso, situacao, GsGpu_Largura(), GsGpu_Altura(), 0, 0,
+                     GsGpu_PosicaoX(), GsGpu_PosicaoY(), trapacas_ligadas(&trapacas)};
+        uint16_t held = botoes();
+        int frame, saindo = -1;
+        GsGpu_SetVideo(VIDEO_240P);
+        for (frame = 0;; ++frame) {
+            uint16_t agora = botoes(), apertou = agora & ~held;
+            held = agora;
+            if (saindo < 0 && apertou && a.ajustando) {
+                /* O modo de ajuste da posição: as setas movem a imagem na hora. */
+                if (apertou & PAD_UP) a.pos_y -= AJUSTE_POS_PASSO;
+                if (apertou & PAD_DOWN) a.pos_y += AJUSTE_POS_PASSO;
+                if (apertou & PAD_LEFT) a.pos_x -= AJUSTE_POS_PASSO;
+                if (apertou & PAD_RIGHT) a.pos_x += AJUSTE_POS_PASSO;
+                a.pos_x = a.pos_x < -AJUSTE_POS_MAX ? -AJUSTE_POS_MAX : a.pos_x > AJUSTE_POS_MAX ? AJUSTE_POS_MAX : a.pos_x;
+                a.pos_y = a.pos_y < -AJUSTE_POS_MAX ? -AJUSTE_POS_MAX : a.pos_y > AJUSTE_POS_MAX ? AJUSTE_POS_MAX : a.pos_y;
+                GsGpu_SetPosicao(a.pos_x, a.pos_y);
+                if (apertou & (PAD_CROSS | PAD_CIRCLE | PAD_START)) a.ajustando = 0, a.movendo = 0;
+            } else if (saindo < 0 && apertou) {
+                int dir = (apertou & PAD_LEFT) ? -1 : (apertou & PAD_RIGHT) ? 1 : 0;
+                contagem = 0;
+                if ((apertou & PAD_CROSS) && a.linha == AJUSTE_POSICAO) {
+                    a.ajustando = 1;
+                } else if ((apertou & PAD_CROSS) && a.linha == AJUSTE_TRAPACAS) {
+                    trapacas_mudou |= tela_trapacas();
+                    a.trapacas = trapacas_ligadas(&trapacas);
+                    held = botoes();
+                } else if (apertou & (PAD_CROSS | PAD_START)) {
+                    saindo = frame;
+                } else if (apertou & (PAD_UP | PAD_DOWN)) {
+                    a.linha = (a.linha + ((apertou & PAD_UP) ? AJUSTE_LINHAS - 1 : 1)) % AJUSTE_LINHAS;
+                } else if (dir && a.linha != AJUSTE_JOGAR) {
+                    /* 240p e 480p. O 480i saiu (20/11/2026): pelo AV o 240p
+                     * fica melhor; o 480p é para componente ou adaptador HDMI. */
+                    if (a.linha == AJUSTE_VIDEO) a.video = a.video == VIDEO_480P ? VIDEO_240P : VIDEO_480P;
+                    if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
+                    if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;
+                    if (a.linha == AJUSTE_POSICAO) a.ajustando = 1; /* as setas dos lados já entram no ajuste */
+                    a.aviso = NULL;
+                }
+            }
+            if (saindo < 0 && contagem && frame >= 5 * 60) saindo = frame;
+            a.segundos = contagem ? 5 - frame / 60 : -1;
+            ajustes_desenha(quadro, msx, &a, frame);
+            if (saindo >= 0 && frame - saindo > 8) break;
+            mostra();
+        }
+        contagem = 0;
+        aviso = NULL;
+        GsGpu_SetWide(a.tela);
+        GsGpu_SetVisual(0);
+        GsGpu_SetVideo(a.video);
+        idioma = a.idioma;
+        /* O modo já confirmado nesta TV entra direto; um novo pergunta. */
+        if (ajustes_salvos && a.video == salvo_video) break;
+        if (confirma_video()) break;
+        {
+            static const char *const nomes[] = {"240p", "480p", "480i"};
+            snprintf(aviso_texto, sizeof(aviso_texto), "A TV não mostrou o %s. Escolha outro.", nomes[a.video]);
+            aviso = aviso_texto;
+            GsGpu_SetVideo(ajustes_salvos ? salvo_video : VIDEO_240P);
+        }
+    }
+    if (!ajustes_salvos || GsGpu_Video() != salvo_video || GsGpu_Wide() != salvo_tela || GsGpu_Visual() != salvo_suave ||
+        idioma != salvo_idioma ||
+        GsGpu_PosicaoX() != salvo_px || GsGpu_PosicaoY() != salvo_py)
+        save_visual();
+    if (trapacas_mudou) trapacas_salva();
+    aplica_idioma();
+    printf("ps2: ajustes: video %d, 16:9 %d, posicao %d %d\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_PosicaoX(),
+           GsGpu_PosicaoY());
+    ajustes_carregando(quadro, msx, 0);
+    mostra();
+    free(quadro);
+    quadro = NULL;
+    tema_libera();
+}
+
 static int test_slot_ok(unsigned char *state) { (void)state; return 1; }
 static unsigned current_frame;
 /* Emulator runs (host:): a command file the developer writes while the game
@@ -419,8 +874,11 @@ static void step_live_input(void)
     else live_bits = 0;
 }
 
+/* Com L2 e R2 apertados juntos o controle é dos atalhos de vídeo (como no
+ * port do Mario): o jogo não vê nada. */
 uint16_t Platform_Pad(int port)
 {
+    if (port == 0 && (pad_bits & (PAD_L2 | PAD_R2)) == (PAD_L2 | PAD_R2)) return 0;
     return port == 0 ? (uint16_t)(pad_bits | live_bits | ControlsRuntime_Keyboard() | Platform_ScriptedBits(current_frame))
                      : 0;
 }
@@ -539,6 +997,7 @@ void Platform_Frame(unsigned frame)
     step_live_input();
     pump_audio();
     Cheats_Frame();
+    trapacas_quadro();
     Cards_Frame();
     Duelists_Frame();
     Tower_Frame();
@@ -590,6 +1049,22 @@ void Platform_Frame(unsigned frame)
             testing = 0;
         }
     }
+    if (live_bits == 0xFFFC && live_input) {
+        /* Depuração no PCSX2: a imagem exibida em host:shot.bin (largura e
+         * altura em 16 bits, depois os pixels CT16). */
+        uint16_t *shot = memalign(64, 448 * 256 * 2);
+        int sw, sh;
+        FILE *file;
+        live_bits = 0;
+        if (shot && GsGpu_ReadShown(shot, &sw, &sh) && (file = fopen("host:shot.bin", "wb"))) {
+            uint16_t size[2] = {(uint16_t)sw, (uint16_t)sh};
+            fwrite(size, 2, 2, file);
+            fwrite(shot, 2, (size_t)(sw * sh), file);
+            fclose(file);
+            printf("ps2: shot %dx%d at frame %u\n", sw, sh, frame);
+        }
+        free(shot);
+    }
     if (live_bits == 0xFFFE) {
         extern int GsGpu_FrameLog;
         live_bits = 0;
@@ -603,6 +1078,32 @@ void Platform_Frame(unsigned frame)
         int combo = (pad_bits & 0x0F01) == 0x0F01;
         if (combo && !held) live_bits = 0xFFFF;
         held = combo;
+    }
+    {
+        /* Atalhos de vídeo, como no port do Mario: L2 + R2 + X troca 4:3 e
+         * 16:9; L2 + R2 + as setas movem a imagem na TV (centralizar),
+         * vendo o próprio jogo. Ficam salvos. */
+        static uint16_t before;
+        uint16_t now = pad_bits | live_bits, pressed = now & ~before;
+        before = now;
+        if ((now & (PAD_L2 | PAD_R2)) == (PAD_L2 | PAD_R2) && (now & PAD_SELECT) == 0) {
+            int changed = 0;
+            if (pressed & PAD_CROSS) GsGpu_SetWide(!GsGpu_Wide()), changed = 1;
+            if (pressed & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) {
+                int px = GsGpu_PosicaoX(), py = GsGpu_PosicaoY();
+                if (pressed & PAD_UP) py -= AJUSTE_POS_PASSO;
+                if (pressed & PAD_DOWN) py += AJUSTE_POS_PASSO;
+                if (pressed & PAD_LEFT) px -= AJUSTE_POS_PASSO;
+                if (pressed & PAD_RIGHT) px += AJUSTE_POS_PASSO;
+                GsGpu_SetPosicao(px, py); /* limita de -16 a 16 */
+                changed = 1;
+            }
+            if (changed) {
+                printf("ps2: suavizacao %d, 16:9 %d, tamanho %d%% x %d%%, posicao %d %d\n", GsGpu_Visual(), GsGpu_Wide(),
+                       GsGpu_Largura(), GsGpu_Altura(), GsGpu_PosicaoX(), GsGpu_PosicaoY());
+                save_visual();
+            }
+        }
     }
     if ((getenv("PS2_DUMP_FRAME") && frame == (unsigned)atoi(getenv("PS2_DUMP_FRAME"))) || live_bits == 0xFFFF) {
         live_bits = 0;
@@ -665,13 +1166,16 @@ static const char *find_disc(void)
                                         "game/YFM.bin", "game/Yu-Gi-Oh! Forbidden Memories (USA).bin", NULL};
     static char path[512];
     const char *const *name;
+    if (from_disc) {
+        /* Na ISO o jogo é YFM.BIN na raiz do disco, pelo cdrom0: da BIOS. */
+        static const char *const on_disc[] = {"cdrom0:\\YFM.BIN;1", NULL};
+        for (name = on_disc; *name; name++)
+            if (exists(*name)) return *name;
+        return NULL;
+    }
     for (name = names; *name; name++) {
         snprintf(path, sizeof(path), "%s/%s", program_dir, *name);
         if (exists(path)) return path;
-    }
-    if (disc_mode) {
-        snprintf(path, sizeof(path), "cdfs:/YFM.BIN");
-        return exists(path) ? path : NULL;
     }
     for (name = names; *name; name++) {
         snprintf(path, sizeof(path), "host:%s", *name);
@@ -687,7 +1191,8 @@ int main(int argc, char **argv)
     char user[300];
     static char *pc_argv[2] = {"memories-ps2", NULL};
     printf("ps2: Yu-Gi-Oh! Forbidden Memories PS2 port starting (%s)\n", argc > 0 ? argv[0] : "?");
-    disc_mode = argc > 0 && argv[0] && !strncmp(argv[0], "cdrom", 5);
+    from_disc = argc > 0 && argv[0] && !strncmp(argv[0], "cdrom", 5);
+    disc_mode = from_disc;
     iop_start();
     /* Sem a tela de texto de debug: as etapas vao so para o YFM-LOG.txt; a
      * tela mostra a abertura (intro_ps2.c) e, se algo falhar, Ps2_Fatal. */
@@ -704,8 +1209,9 @@ int main(int argc, char **argv)
     else if ((slash = strchr(program_dir, ':'))) slash[1] = '\0';
     if (!strncmp(program_dir, "mass:", 5) || !strncmp(program_dir, "host", 4)) {
         /* fine as it is */
-    } else if (disc_mode) {
-        snprintf(program_dir, sizeof(program_dir), "cdfs:");
+    } else if (from_disc) {
+        /* Os arquivos do port (saves, YFM-VISUAL.txt) no cartão de memória. */
+        snprintf(program_dir, sizeof(program_dir), "mc%d:/YFMPS2", mc_ok ? cartao_gravavel() : 0);
     } else if (!program_dir[0]) {
         snprintf(program_dir, sizeof(program_dir), "mass:/YFM");
     }
@@ -719,13 +1225,18 @@ int main(int argc, char **argv)
             nanosleep(&wait, NULL);
         }
     }
+    tema_disco = disc;
     if (!disc) {
         char text[700];
-        snprintf(text, sizeof(text), "The disc image was not found.\n\n  Put YFM.bin (your Forbidden Memories USA .bin)\n"
-                                     "  next to the ELF:\n  %s/YFM.bin", program_dir);
+        if (from_disc)
+            snprintf(text, sizeof(text), "YFM.BIN was not found on this disc.\n\n  Make the ISO again with the port's\n"
+                                         "  creator page (criar-port.html).");
+        else
+            snprintf(text, sizeof(text), "The disc image was not found.\n\n  Put YFM.bin (your Forbidden Memories USA .bin)\n"
+                                         "  next to the ELF:\n  %s/YFM.bin", program_dir);
         Ps2_Fatal(text);
     }
-    if (strncmp(program_dir, "host", 4) && !disc_mode) {
+    if (strncmp(program_dir, "host", 4) && !from_disc) { /* no cartão de memória, não: grava demais */
         snprintf(log_path, sizeof(log_path), "%s/YFM-LOG.txt", program_dir);
         if (freopen(log_path, "w", stdout)) {
             setvbuf(stdout, NULL, _IOLBF, 0);
@@ -735,6 +1246,29 @@ int main(int argc, char **argv)
         }
     }
     Ps2_Stage("disco: %s", disc);
+    if (from_disc && !mc_ok) printf("ps2: sem cartao de memoria: os saves nao vao ficar\n");
+    if (from_disc) {
+        /* O cdrom0: não responde fstat: o tamanho do YFM.BIN pelo stat do
+         * caminho, ou pelo YFM.SIZ que o criador grava na ISO. */
+        unsigned long long size = 0;
+        struct stat st;
+        FILE *file;
+        if (!stat(disc, &st) && st.st_size > 0) size = (unsigned long long)st.st_size;
+        if (!size && (file = fopen("cdrom0:\\YFM.SIZ;1", "rb"))) {
+            char text[32] = {0};
+            if (fgets(text, sizeof(text), file)) size = strtoull(text, NULL, 10);
+            fclose(file);
+        }
+        if (size) {
+            char text[32];
+            snprintf(text, sizeof(text), "%llu", size);
+            setenv("MEMORIES_DISC_SIZE", text, 1);
+        }
+        printf("ps2: disco no CD, %llu bytes\n", size);
+    }
+    load_visual();
+    tela_ajustes();
+
     {
         extern void Ps2_Intro(int pad_ok, int audio_ok, int fast);
         FILE *want = strncmp(program_dir, "host", 4) ? NULL : fopen("host:intro.txt", "rb");
@@ -765,24 +1299,7 @@ int main(int argc, char **argv)
     }
     if (disc_mode) {
         /* The memory card in slot 1 (or 2): mc0:/YFMPS2. */
-        int slot, made = -1;
-        for (slot = 0; slot < 2; slot++) {
-            char dir[32], probe_path[48];
-            FILE *probe;
-            int r;
-            snprintf(dir, sizeof(dir), "mc%d:/YFMPS2", slot);
-            r = mkdir(dir, 0777);
-            snprintf(probe_path, sizeof(probe_path), "%s/PROBE.TXT", dir);
-            probe = fopen(probe_path, "wb");
-            printf("ps2: memory card %d: %s (errno %d)\n", slot, probe ? "ok" : "sem acesso", probe ? 0 : errno);
-            if (probe) {
-                fclose(probe);
-                remove(probe_path);
-                made = slot;
-                break;
-            }
-        }
-        slot = made < 0 ? 0 : made;
+        int slot = cartao_gravavel();
         snprintf(user, sizeof(user), "mc%d:/YFMPS2", slot);
         {
             /* O icone e o titulo da pasta no navegador do PS2 (sem eles o
@@ -804,24 +1321,48 @@ int main(int argc, char **argv)
                     if (have == (long)(icons[k].end - icons[k].start))
                         continue;
                 }
-                if ((f = fopen(path, "wb"))) {
-                    fwrite(icons[k].start, 1, (size_t)(icons[k].end - icons[k].start), f);
-                    fclose(f);
+                {
+                    /* Apaga antes: o cartão não encurta um arquivo maior. */
+                    size_t tamanho = (size_t)(icons[k].end - icons[k].start), gravou = 0;
+                    remove(path);
+                    if ((f = fopen(path, "wb"))) {
+                        gravou = fwrite(icons[k].start, 1, tamanho, f);
+                        if (fclose(f)) gravou = 0;
+                    }
+                    printf("ps2: icone %s: %s (errno %d)\n", path, gravou == tamanho ? "gravado" : "FALHOU",
+                           gravou == tamanho ? 0 : errno);
                 }
             }
         }
-        if (disc_mode == 1) {
-            setenv("MEMORIES_LANGUAGE_FILE", "cdfs:/LANG/PTBR.TXT", 1);
-            setenv("MEMORIES_TRACE", "mods", 1); /* o idioma no console do emulador */
-        }
+        if (disc_mode == 1) setenv("MEMORIES_TRACE", "mods", 1); /* o idioma no console do emulador */
         Ps2_Stage("disco: saves em %s", user);
     }
     setenv("MEMORIES_USER_DIR", user, 1);
     setenv("MEMORIES_NO_MONITOR", "1", 1);
+    /* Os vários decks do port de PC ("Build Deck: which deck?") ficam
+     * desligados: a tela é larga demais para 320 pontos e não existe no PS1.
+     * Montar o deck abre direto, como no jogo original (20/11/2026). */
+    setenv("MEMORIES_DECK_SLOTS", "0", 1);
     if (!strncmp(program_dir, "host:", 5)) {
         extern void Ps2_StartSampler(void);
         FILE *script = fopen("host:input.txt", "rb");
         live_input = 1;
+        {
+            /* host:env.txt: linhas CHAVE=VALOR para o código de PC (por
+             * exemplo MEMORIES_MODE_AT, que pula para um modo do jogo). */
+            FILE *env = fopen("host:env.txt", "rb");
+            char line[256];
+            while (env && fgets(line, sizeof(line), env)) {
+                char *eq = strchr(line, '='), *end = line + strcspn(line, "\r\n");
+                *end = 0;
+                if (eq && eq > line) {
+                    *eq = 0;
+                    setenv(line, eq + 1, 1);
+                    printf("ps2: env %s=%s\n", line, eq + 1);
+                }
+            }
+            if (env) fclose(env);
+        }
         setenv("PS2_GUEST_DUMP", "host:dumps/g", 1);
         setenv("MEMORIES_TRACE", "frames,disc,stub,window,clock,mods,input,model", 1);
         if (script) {

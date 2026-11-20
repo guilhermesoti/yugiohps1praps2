@@ -29,5 +29,8 @@ jobs:
           cp languages/pt-br.txt pacote/YFM/languages/
           cp tools/ps2/iso/montar_iso.exe pacote/YFM/
           cp -r release/ART pacote/ART
+          # A página que cria a ISO ou o aplicativo a partir do .bin/.cue do jogador
+          # (o ELF e a tradução vão dentro dela).
+          python3 tools/ps2/make_creator.py release/YFM_PS2.ELF pacote/YFM/criar-port.html
           (cd pacote && zip -r "../YFM_PS2_${TAG}.zip" YFM ART)
           gh release upload "$TAG" "YFM_PS2_${TAG}.zip" --clobber

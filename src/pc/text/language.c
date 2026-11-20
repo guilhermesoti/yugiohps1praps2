@@ -321,24 +321,51 @@ static char *pack_listing(int language, size_t *length, char *origin, size_t ori
 {
     char path[PATH_SIZE], *text = NULL;
     FILE *file = open_pack(language, path, sizeof(path));
-    long size;
-    size_t n = 0, i;
+    size_t size = 0, capacity = 0, got, n = 0, i;
     if (!file) return NULL;
-    if (!fseek(file, 0, SEEK_END) && (size = ftell(file)) > 0 && (unsigned long)size < PACK_LIMIT &&
-        !fseek(file, 0, SEEK_SET) && (text = malloc((size_t)size + 1)) &&
-        fread(text, 1, (size_t)size, file) == (size_t)size) {
-        for (i = 0; i < (size_t)size; i++) {
-            if (text[i] != '\r') text[n++] = text[i];
+    /* Em blocos até o fim, sem perguntar o tamanho: o cdrom0: do PS2 (a
+     * tradução dentro da ISO, lida pelo IOMAN da BIOS) não responde o fseek
+     * até o fim. */
+    for (;;) {
+        size_t want;
+        if (capacity - size < 2) {
+            char *bigger;
+            size_t next = capacity ? capacity * 2 : 262144;
+            if (capacity >= PACK_LIMIT) {
+                /* Cheio no limite: só serve se o arquivo acabou aqui (como
+                 * antes, menos de PACK_LIMIT bytes). */
+                if (fgetc(file) == EOF && !ferror(file)) break;
+                goto fail;
+            }
+            if (next > PACK_LIMIT) next = PACK_LIMIT;
+            if (!(bigger = realloc(text, next))) goto fail;
+            text = bigger;
+            capacity = next;
         }
-        text[n] = '\0';
-        *length = n;
-        snprintf(origin, origin_size, "%s", path);
-    } else {
-        free(text);
-        text = NULL;
+        want = capacity - size - 1; /* sempre sobra o byte do '\0' */
+        if (want > 65536) want = 65536;
+        got = fread(text + size, 1, want, file);
+        size += got;
+        if (got < want) break;
     }
+    /* Um erro de leitura no meio não vira uma tradução pela metade. */
+    if (ferror(file)) goto fail;
     fclose(file);
+    if (!size) {
+        free(text);
+        return NULL;
+    }
+    for (i = 0; i < size; i++) {
+        if (text[i] != '\r') text[n++] = text[i];
+    }
+    text[n] = '\0';
+    *length = n;
+    snprintf(origin, origin_size, "%s", path);
     return text;
+fail:
+    free(text);
+    fclose(file);
+    return NULL;
 }
 
 /* Where a language's text can come from, tried in order: the pack, then

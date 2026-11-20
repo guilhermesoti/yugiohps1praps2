@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Criar o port · Forbidden Memories para PS2</title>
+<style>
+  :root {
+    --night: #05071a;
+    --indigo: #141a4a;
+    --indigo-2: #1c2462;
+    --row: #232a63;
+    --gold: #d8a838;
+    --gold-light: #f8d878;
+    --gold-dark: #6a4a10;
+    --ivory: #f4ecd8;
+    --dim: #b8b0a0;
+    --faint: #7a7490;
+    --ok: #6fdc9a;
+    --warn: #f0c070;
+    --err: #ff7b7b;
+    --blue: #3a58e8;
+    --serif: "Cinzel", "Trajan Pro", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: var(--sans);
+    color: var(--ivory);
+    background:
+      radial-gradient(1200px 700px at 50% -10%, rgba(58, 88, 232, .28), transparent 60%),
+      radial-gradient(900px 600px at 50% 110%, rgba(216, 168, 56, .12), transparent 60%),
+      var(--night);
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  /* Parede de hieróglifos (desenhos originais, bem apagados) */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .07;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160' fill='none' stroke='%23d8a838' stroke-width='2.2' stroke-linecap='round'><path d='M14 26h22M18 31h16M14 31c-2 2 0 5 0 5M36 31c2 2 0 5 0 5M23 31v6M21 37l-4 9M23 37h6'/><circle cx='26' cy='31' r='3'/><path d='M100 14c-6 0-8 7-8 11s3 8 8 8 8-4 8-8-2-11-8-11zM100 33v22M90 40h20'/><path d='M20 92q7-6 14 0t14 0 14 0M20 102q7-6 14 0t14 0 14 0'/><path d='M104 86l14 20h-28zM96 120h16'/><path d='M60 130c8-10 18-10 26 0M73 120v-14l6 4'/><path d='M126 142c0-8 6-12 10-12s8 4 8 10M136 130v-8M131 122h10'/></svg>");
+    background-size: 160px 160px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 36px 20px 60px; position: relative; }
+
+  /* ---- topo ---- */
+  header { text-align: center; margin-bottom: 30px; }
+  .eye { width: 92px; height: 60px; filter: drop-shadow(0 0 18px rgba(248, 216, 120, .45)); animation: glow 4s ease-in-out infinite; }
+  @keyframes glow { 50% { filter: drop-shadow(0 0 30px rgba(248, 216, 120, .75)); } }
+  .eyebrow { font: 600 12px/1 var(--sans); letter-spacing: .38em; color: var(--gold); text-transform: uppercase; margin: 14px 0 10px; }
+  h1 {
+    font-family: var(--serif); font-weight: 700; margin: 0; font-size: clamp(30px, 5.4vw, 52px); letter-spacing: .02em; line-height: 1.08;
+    background: linear-gradient(180deg, #fff6d6 0%, var(--gold-light) 35%, var(--gold) 70%, #8a6418 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 2px 30px rgba(216, 168, 56, .18);
+  }
+  .tagline { color: var(--dim); margin: 12px auto 0; max-width: 560px; }
+
+  /* ---- janela no estilo do jogo: borda dourada com cantos em degrau ---- */
+  .window {
+    position: relative; background: linear-gradient(180deg, var(--indigo-2), #0c1034);
+    border: 2px solid var(--gold); box-shadow: inset 0 0 0 3px #0a0d2a, inset 0 0 0 4px var(--gold-dark), 0 30px 80px rgba(0, 0, 0, .55);
+    border-radius: 4px; padding: 30px clamp(18px, 4vw, 40px) 34px;
+  }
+  .window .corner { position: absolute; width: 18px; height: 18px; border: 3px solid var(--gold); }
+  .window .corner::after { content: ""; position: absolute; width: 6px; height: 6px; background: var(--gold-light); }
+  .corner.tl { top: 8px; left: 8px; border-right: 0; border-bottom: 0; } .corner.tl::after { top: 3px; left: 3px; }
+  .corner.tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; } .corner.tr::after { top: 3px; right: 3px; }
+  .corner.bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; } .corner.bl::after { bottom: 3px; left: 3px; }
+  .corner.br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; } .corner.br::after { bottom: 3px; right: 3px; }
+
+  /* ---- passos ---- */
+  .steps { display: flex; align-items: center; justify-content: center; gap: 0; margin: 0 0 28px; padding: 0; list-style: none; }
+  .steps li { display: flex; align-items: center; gap: 10px; color: var(--faint); font-weight: 600; font-size: 14px; letter-spacing: .04em; }
+  .steps li + li::before { content: ""; width: clamp(24px, 7vw, 70px); height: 2px; background: linear-gradient(90deg, var(--gold-dark), #2a2f60); margin: 0 14px; }
+  .medal {
+    width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-family: var(--serif); font-size: 16px;
+    border: 2px solid #3a3f70; background: #0c1034; color: var(--faint); transition: all .3s;
+  }
+  .steps li.on { color: var(--ivory); }
+  .steps li.on .medal { border-color: var(--gold); color: #1a1206; background: radial-gradient(circle at 35% 30%, #fff1c0, var(--gold) 60%, #8a6418); box-shadow: 0 0 18px rgba(216, 168, 56, .55); }
+  .steps li.past .medal { border-color: var(--gold); color: var(--gold-light); }
+
+  section.step { display: none; animation: rise .45s ease both; }
+  section.step.on { display: block; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  h2 { font-family: var(--serif); color: var(--gold-light); font-size: 22px; letter-spacing: .06em; margin: 0 0 6px; text-align: center; }
+  .lead { color: var(--dim); text-align: center; margin: 0 auto 22px; max-width: 620px; }
+  .divider { display: flex; align-items: center; gap: 12px; margin: 0 auto 22px; max-width: 420px; color: var(--gold); }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-dark), transparent); }
+  .divider span { width: 10px; height: 10px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+
+  /* ---- passo 1: arquivos ---- */
+  .drop {
+    display: block; position: relative; border: 2px dashed rgba(216, 168, 56, .55); border-radius: 10px; padding: 34px 20px; text-align: center; cursor: pointer;
+    background: radial-gradient(400px 160px at 50% 0, rgba(58, 88, 232, .18), transparent 70%), rgba(5, 7, 26, .35); transition: all .25s;
+  }
+  .drop:hover, .drop.over { border-color: var(--gold-light); background-color: rgba(216, 168, 56, .07); transform: translateY(-1px); }
+  .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop svg { width: 64px; height: 64px; margin-bottom: 10px; }
+  .drop.over svg { animation: spin 1.4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .drop strong { display: block; font-size: 18px; margin-bottom: 4px; }
+  .drop small { color: var(--dim); }
+  .files { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  .file { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 8px; background: rgba(35, 42, 99, .55); border: 1px solid #2c3370; min-width: 0; }
+  .file .ico { flex: none; width: 38px; height: 38px; border-radius: 8px; display: grid; place-items: center; background: #0c1034; border: 1px solid var(--gold-dark); font: 700 11px var(--sans); color: var(--gold-light); letter-spacing: .05em; }
+  .file .what { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  .file .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .file .state { margin-left: auto; flex: none; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: #0c1034; color: var(--faint); }
+  .file.ok { border-color: rgba(111, 220, 154, .45); } .file.ok .state { color: var(--ok); }
+  .file.bad { border-color: rgba(255, 123, 123, .5); } .file.bad .state { color: var(--err); }
+  .verdict { margin-top: 16px; border-radius: 10px; padding: 16px 18px; display: none; gap: 14px; align-items: flex-start; }
+  .verdict.show { display: flex; }
+  .verdict.ok { background: linear-gradient(90deg, rgba(111, 220, 154, .14), rgba(111, 220, 154, .04)); border: 1px solid rgba(111, 220, 154, .4); }
+  .verdict.bad { background: rgba(255, 123, 123, .1); border: 1px solid rgba(255, 123, 123, .45); }
+  .verdict.busy { background: rgba(58, 88, 232, .14); border: 1px solid rgba(58, 88, 232, .45); }
+  .verdict .big { font-size: 26px; line-height: 1; }
+  .verdict b { display: block; margin-bottom: 2px; }
+  .verdict ul { margin: 6px 0 0; padding-left: 18px; color: var(--dim); }
+  .verdict .warn { color: var(--warn); }
+
+  /* ---- passo 2: cartas de formato ---- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
+  .card {
+    position: relative; cursor: pointer; border-radius: 12px; padding: 10px; text-align: left; color: inherit; font: inherit;
+    background: linear-gradient(160deg, #c8902c, #8a5e12 45%, #d8a838 75%, #6a4a10);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, .45); border: 0; transition: transform .25s, box-shadow .25s;
+  }
+  .card:hover { transform: translateY(-4px) rotate(-.4deg); }
+  .card.on { transform: translateY(-6px); box-shadow: 0 0 0 3px var(--gold-light), 0 0 40px rgba(248, 216, 120, .45), 0 20px 40px rgba(0, 0, 0, .5); }
+  .card .inner { background: #12163e; border-radius: 6px; padding: 12px; height: 100%; display: flex; flex-direction: column; }
+  .card .title { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: 4px; background: linear-gradient(180deg, #f6e3b0, #d9b86a); color: #241806; font-family: var(--serif); font-weight: 700; letter-spacing: .04em; }
+  .card .title i { font-style: normal; font-size: 12px; font-family: var(--sans); background: #241806; color: var(--gold-light); padding: 1px 8px; border-radius: 99px; }
+  .card .art { margin: 10px 0; height: 120px; border-radius: 4px; display: grid; place-items: center; border: 2px solid #5a3e0c; overflow: hidden; position: relative; }
+  .card .art svg { width: 96px; height: 96px; position: relative; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .5)); transition: transform .4s; }
+  .card:hover .art svg { transform: scale(1.06); }
+  .card.iso .art { background: radial-gradient(circle at 50% 40%, #4c6cff, #121a5a 70%); }
+  .card.app .art { background: radial-gradient(circle at 50% 40%, #2fbf8f, #0b3a32 70%); }
+  .card .type { font-family: var(--serif); font-weight: 700; color: var(--gold-light); font-size: 13px; letter-spacing: .05em; }
+  .card .text { background: #f2e7c9; color: #2a1e0a; border-radius: 4px; padding: 10px 12px; font-size: 14px; margin-top: 6px; flex: 1; }
+  .card .stats { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; font: 700 12px var(--sans); color: var(--gold-light); letter-spacing: .04em; }
+  .card .stats span { background: rgba(0, 0, 0, .3); padding: 4px 8px; border-radius: 4px; }
+
+  /* ---- botões e progresso ---- */
+  .actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+  button.gold, a.gold {
+    font: 700 16px var(--sans); letter-spacing: .06em; color: #1e1404; text-decoration: none; cursor: pointer;
+    padding: 14px 30px; border-radius: 8px; border: 1px solid #fff0b8;
+    background: linear-gradient(180deg, #fff0b8, var(--gold-light) 30%, var(--gold) 70%, #a47418);
+    box-shadow: 0 6px 0 #5a3e0c, 0 10px 24px rgba(216, 168, 56, .3); transition: transform .12s, box-shadow .12s, filter .2s;
+  }
+  button.gold:hover, a.gold:hover { filter: brightness(1.07); }
+  button.gold:active, a.gold:active { transform: translateY(4px); box-shadow: 0 2px 0 #5a3e0c, 0 6px 16px rgba(216, 168, 56, .3); }
+  button.gold:disabled { filter: grayscale(.8) brightness(.6); cursor: not-allowed; transform: none; }
+  button.ghost { font: 600 15px var(--sans); color: var(--ivory); background: transparent; border: 1px solid #3a3f70; padding: 13px 22px; border-radius: 8px; cursor: pointer; }
+  button.ghost:hover { border-color: var(--gold); color: var(--gold-light); }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 0 0 6px; }
+  .summary div { background: rgba(35, 42, 99, .55); border: 1px solid #2c3370; border-radius: 8px; padding: 10px 14px; }
+  .summary small { display: block; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+  .bar { height: 14px; border-radius: 99px; background: #0a0d2a; border: 1px solid var(--gold-dark); overflow: hidden; margin-top: 22px; display: none; }
+  .bar.show { display: block; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8a6418, var(--gold), var(--gold-light)); position: relative; transition: width .2s; }
+  .bar i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent); animation: shine 1.2s linear infinite; }
+  @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .status { text-align: center; color: var(--dim); margin-top: 10px; min-height: 1.5em; }
+  .done { display: none; margin-top: 24px; text-align: center; }
+  .done.show { display: block; animation: rise .5s ease both; }
+  .done .burst { font-size: 44px; filter: drop-shadow(0 0 16px rgba(248, 216, 120, .7)); }
+  .howto { text-align: left; max-width: 640px; margin: 18px auto 0; background: rgba(5, 7, 26, .45); border: 1px solid #2c3370; border-radius: 10px; padding: 16px 20px 6px; }
+  .howto h3 { margin: 0 0 8px; font-family: var(--serif); color: var(--gold-light); font-size: 17px; letter-spacing: .04em; }
+  .howto ol { margin: 0 0 12px; padding-left: 22px; } .howto li { margin-bottom: 6px; }
+  .howto code { background: #0c1034; border: 1px solid #2c3370; padding: 1px 6px; border-radius: 4px; color: var(--gold-light); font-size: .92em; }
+  .tip { margin-top: 14px; display: inline-flex; gap: 10px; align-items: center; background: rgba(58, 88, 232, .16); border: 1px solid rgba(58, 88, 232, .5); padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+  kbd { font: 700 12px var(--sans); background: #e9e2cf; color: #1c1c28; border-radius: 4px; padding: 2px 7px; box-shadow: 0 2px 0 #8d8676; }
+
+  footer { text-align: center; color: var(--faint); font-size: 13px; margin-top: 28px; }
+  footer .lock { color: var(--ok); }
+  @media (max-width: 620px) { .files { grid-template-columns: 1fr; } .steps li span.label { display: none; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <!-- O olho de Hórus (desenho original) -->
+    <svg class="eye" viewBox="0 0 120 78" fill="none" stroke="#f8d878" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M8 14 C40 2 82 2 112 12"/>
+      <path d="M10 34 C32 16 78 14 110 30 C84 48 40 50 10 34 Z" fill="rgba(216,168,56,.12)"/>
+      <circle cx="58" cy="31" r="9" fill="#f8d878" stroke="none"/>
+      <path d="M50 46 C48 58 44 66 38 72"/>
+      <path d="M64 46 C72 54 82 60 90 58 C96 56 96 50 90 50"/>
+    </svg>
+    <div class="eyebrow">Port para PlayStation 2</div>
+    <h1>Yu-Gi-Oh! Forbidden Memories</h1>
+    <p class="tagline">Crie o port a partir do <b>seu próprio disco</b>: escolha o .bin e o .cue, o formato, e pronto.</p>
+  </header>
+
+  <main class="window">
+    <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+    <ol class="steps" id="steps">
+      <li class="on" data-step="1"><span class="medal">1</span><span class="label">Seu jogo</span></li>
+      <li data-step="2"><span class="medal">2</span><span class="label">Formato</span></li>
+      <li data-step="3"><span class="medal">3</span><span class="label">Criar</span></li>
+    </ol>
+
+    <!-- Passo 1 -->
+    <section class="step on" id="step1">
+      <h2>Seu disco do jogo</h2>
+      <div class="divider"><span></span></div>
+      <p class="lead">Escolha a imagem do <b>Yu-Gi-Oh! Forbidden Memories (USA)</b>: o arquivo <b>.bin</b> e o <b>.cue</b> dele. Os arquivos não saem do seu computador.</p>
+      <label class="drop" id="drop">
+        <input type="file" id="pick" multiple accept=".bin,.cue">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <defs><radialGradient id="cd" cx="40%" cy="35%"><stop offset="0" stop-color="#fff6d6"/><stop offset=".45" stop-color="#9fb4ff"/><stop offset=".75" stop-color="#d8a838"/><stop offset="1" stop-color="#6a4a10"/></radialGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="url(#cd)" stroke="#f8d878" stroke-width="2"/>
+          <circle cx="32" cy="32" r="9" fill="#05071a" stroke="#f8d878" stroke-width="2"/>
+          <path d="M14 22a20 20 0 0 1 10-9" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+        </svg>
+        <strong>Arraste o .bin e o .cue para cá</strong>
+        <small>ou clique para escolher os dois arquivos</small>
+      </label>
+      <div class="files">
+        <div class="file" id="fBin"><div class="ico">BIN</div><div style="min-width:0"><div class="what">Imagem do disco</div><div class="name">nenhum arquivo</div></div><div class="state">aguardando</div></div>
+        <div class="file" id="fCue"><div class="ico">CUE</div><div style="min-width:0"><div class="what">Índice do disco</div><div class="name">nenhum arquivo</div></div><div class="state">aguardando</div></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+      <div class="actions"><button class="gold" id="to2" disabled>Continuar</button></div>
+    </section>
+
+    <!-- Passo 2 -->
+    <section class="step" id="step2">
+      <h2>Escolha o formato</h2>
+      <div class="divider"><span></span></div>
+      <p class="lead">Os dois rodam no OPL. A diferença é onde o jogo fica e onde os saves são guardados.</p>
+      <div class="cards">
+        <button class="card iso" data-format="iso" type="button">
+          <div class="inner">
+            <div class="title">ISO <i>DISCO</i></div>
+            <div class="art">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="#dfe6ff" stroke="#f8d878" stroke-width="2.5"/><circle cx="32" cy="32" r="20" fill="none" stroke="#9fb4ff" stroke-width="5" opacity=".7"/><circle cx="32" cy="32" r="7" fill="#05071a" stroke="#f8d878" stroke-width="2"/><path d="M15 24a19 19 0 0 1 9-9" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+            </div>
+            <div class="type">[ Imagem de disco ]</div>
+            <div class="text">Um arquivo <b>.iso</b> para a pasta <b>CD</b> do OPL ou para abrir no <b>PCSX2</b>. Os saves vão para o <b>cartão de memória</b>.</div>
+            <div class="stats"><span>OPL · USB GAMES</span><span>SAVE · CARTÃO</span></div>
+          </div>
+        </button>
+        <button class="card app" data-format="app" type="button">
+          <div class="inner">
+            <div class="title">APLICATIVO <i>APPS</i></div>
+            <div class="art">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M6 18h20l5 6h27v28a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z" fill="#f8d878" stroke="#6a4a10" stroke-width="2"/><path d="M6 26h52" stroke="#6a4a10" stroke-width="2"/><rect x="22" y="33" width="20" height="16" rx="2" fill="#12163e"/><path d="M27 41h10M32 36v10" stroke="#6fdc9a" stroke-width="3" stroke-linecap="round"/></svg>
+            </div>
+            <div class="type">[ Pasta APPS ]</div>
+            <div class="text">Uma pasta <b>APPS/YFM_PS2</b> para o pendrive: aparece na aba <b>Apps</b> do OPL e abre no <b>uLaunchELF</b>. Saves e opções ficam no <b>pendrive</b>.</div>
+            <div class="stats"><span>OPL · APPS</span><span>SAVE · PENDRIVE</span></div>
+          </div>
+        </button>
+      </div>
+      <div class="actions"><button class="ghost" id="back1">Voltar</button><button class="gold" id="to3" disabled>Continuar</button></div>
+    </section>
+
+    <!-- Passo 3 -->
+    <section class="step" id="step3">
+      <h2>Criar o port</h2>
+      <div class="divider"><span></span></div>
+      <div class="summary" id="summary"></div>
+      <div class="actions" id="makeActions">
+        <button class="ghost" id="back2">Voltar</button>
+        <button class="gold" id="make">Criar o port</button>
+        <button class="gold" id="makeDirect" hidden>Gravar direto no pendrive</button>
+      </div>
+      <div class="bar" id="bar"><i></i></div>
+      <div class="status" id="status"></div>
+      <div class="done" id="done">
+        <div class="burst">✦</div>
+        <h2 id="doneTitle">Pronto!</h2>
+        <div class="actions" id="saveAgain"></div>
+        <div class="howto" id="howto"></div>
+        <div class="tip">Ao ligar, a tela <b>AJUSTES</b> escolhe vídeo, tela e suavização. No jogo, <kbd>L2</kbd>+<kbd>R2</kbd>+<kbd>X</kbd> troca 4:3/16:9 e <kbd>L2</kbd>+<kbd>R2</kbd>+<kbd>○</kbd> a suavização.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div><span class="lock">●</span> Tudo acontece no seu navegador: o jogo não é enviado para lugar nenhum.</div>
+    <div>Você precisa ter o seu próprio disco do jogo. · Versão do port: __VERSION__</div>
+  </footer>
+</div>
+
+<script>
+/*__CORE__*/
+</script>
+<script>
+const ELF_GZ_B64 = "__ELF_B64__";
+/* A tradução (languages/pt-br.txt), que vai junto na ISO e no aplicativo. */
+const PTBR_GZ_B64 = "__PTBR_B64__";
+const $ = (id) => document.getElementById(id);
+const state = { bin: null, cue: null, cueInfo: null, check: null, format: null, elf: null, ticket: 0, url: null };
+/* Texto que vem de fora (nomes de arquivo, o .cue, mensagens de erro) entra como texto, nunca como HTML. */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const mb = (n) => (n / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " MB";
+
+function go(step) {
+  for (const s of [1, 2, 3]) $("step" + s).classList.toggle("on", s === step);
+  for (const li of document.querySelectorAll("#steps li")) {
+    const n = +li.dataset.step;
+    li.classList.toggle("on", n === step);
+    li.classList.toggle("past", n < step);
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function setFile(id, file, ok, label) {
+  const el = $(id);
+  el.classList.toggle("ok", ok === true);
+  el.classList.toggle("bad", ok === false);
+  el.querySelector(".name").textContent = file ? file.name : "nenhum arquivo";
+  el.querySelector(".state").textContent = label;
+}
+
+function verdict(kind, icon, title, items = [], warn = []) {
+  const v = $("verdict");
+  v.className = "verdict show " + kind;
+  v.innerHTML = `<div class="big">${icon}</div><div><b>${esc(title)}</b>${
+    items.length || warn.length ? `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join("")}${warn.map((t) => `<li class="warn">${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
+}
+
+async function takeFiles(list) {
+  for (const f of list) {
+    const ext = f.name.toLowerCase().split(".").pop();
+    if (ext === "bin") state.bin = f;
+    else if (ext === "cue") state.cue = f;
+  }
+  await review();
+}
+
+async function review() {
+  /* Cada escolha de arquivo começa uma conferência nova; a resposta de uma
+   * conferência antiga (que terminou depois) é jogada fora. */
+  const ticket = ++state.ticket;
+  const problems = [];
+  state.check = null;
+  $("to2").disabled = true;
+  if (state.cue) {
+    const cueText = await state.cue.text();
+    if (ticket !== state.ticket) return;
+    state.cueInfo = YFM.parseCue(cueText);
+    const cp = [...state.cueInfo.problems];
+    if (state.bin && state.cueInfo.binName && state.cueInfo.binName.toLowerCase() !== state.bin.name.toLowerCase())
+      cp.push(`O .cue aponta para “${state.cueInfo.binName}”, mas o .bin escolhido é “${state.bin.name}”.`);
+    setFile("fCue", state.cue, !cp.length, cp.length ? "confira" : "ok");
+    problems.push(...cp);
+  } else setFile("fCue", null, null, "aguardando");
+  if (!state.bin) {
+    setFile("fBin", null, null, "aguardando");
+    if (state.cue) verdict("busy", "💿", "Agora escolha o .bin", [`O .cue pede: “${state.cueInfo.binName || "?"}”.`]);
+    return;
+  }
+  setFile("fBin", state.bin, null, "lendo…");
+  verdict("busy", "⏳", "Conferindo o disco…");
+  const check = await YFM.checkBin(state.bin);
+  if (ticket !== state.ticket) return;
+  setFile("fBin", state.bin, check.ok, check.ok ? check.id : "inválido");
+  problems.unshift(...check.errors);
+  if (!state.cue) problems.push("Falta o .cue do disco.");
+  if (problems.length) {
+    verdict("bad", "✗", check.ok ? "Quase lá" : "Este arquivo não serve", problems, check.warnings);
+    return;
+  }
+  state.check = check;
+  verdict("ok", "✓", `Yu-Gi-Oh! Forbidden Memories (USA) · ${check.id} · ${mb(check.size)}`,
+          ["Disco reconhecido. Pode continuar."], check.warnings);
+  $("to2").disabled = false;
+}
+
+/* Arrastar e soltar */
+const drop = $("drop");
+["dragenter", "dragover"].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((e) => drop.addEventListener(e, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (ev) => { ev.preventDefault(); takeFiles(ev.dataTransfer.files); });
+$("pick").addEventListener("change", (ev) => { takeFiles(ev.target.files); ev.target.value = ""; });
+$("to2").onclick = () => go(2);
+
+/* Passo 2 */
+for (const card of document.querySelectorAll(".card")) {
+  card.onclick = () => {
+    state.format = card.dataset.format;
+    document.querySelectorAll(".card").forEach((c) => c.classList.toggle("on", c === card));
+    $("to3").disabled = false;
+  };
+}
+$("back1").onclick = () => go(1);
+$("to3").onclick = () => { prepareStep3(); go(3); };
+$("back2").onclick = () => go(2);
+
+function prepareStep3() {
+  const iso = state.format === "iso";
+  $("summary").innerHTML = `
+    <div><small>Jogo</small>${esc(state.bin.name)}</div>
+    <div><small>Formato</small>${iso ? "ISO (disco)" : "Aplicativo (APPS)"}</div>
+    <div><small>Vai gerar</small>${iso ? YFM.ISO_NAME : "YFM_PS2_app.zip"} · ~${mb(state.check.size + 16e6)}</div>
+    <div><small>Idioma</small>${PTBR_GZ_B64 ? "Português (tradução inclusa)" : "Inglês"}</div>`;
+  $("makeDirect").hidden = iso || !window.showDirectoryPicker;
+  $("make").textContent = iso ? "Criar a ISO" : "Baixar o ZIP";
+  $("make").hidden = false;
+  $("make").disabled = $("makeDirect").disabled = false;
+  $("done").classList.remove("show");
+  $("bar").classList.remove("show");
+  $("status").textContent = "";
+  $("makeActions").hidden = false;
+}
+
+function progress(fraction, text) {
+  $("bar").classList.add("show");
+  $("bar").firstElementChild.style.width = Math.round(fraction * 100) + "%";
+  if (text) $("status").textContent = text;
+}
+
+async function elf() {
+  if (!state.elf) {
+    progress(0.04, "Preparando o port…");
+    state.elf = await YFM.gunzipBase64(ELF_GZ_B64);
+    state.ptbr = PTBR_GZ_B64 ? await YFM.gunzipBase64(PTBR_GZ_B64) : null;
+  }
+  return state.elf;
+}
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  if (state.url) URL.revokeObjectURL(state.url); /* o arquivo anterior sai da memória */
+  state.url = URL.createObjectURL(blob);
+  a.href = state.url;
+  a.download = name;
+  a.className = "gold";
+  a.textContent = "Baixar de novo";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  const again = a.cloneNode(true);
+  $("saveAgain").replaceChildren(again);
+}
+
+function finish(kind) {
+  progress(1);
+  $("status").textContent = "";
+  /* O "Voltar" continua, para criar o outro formato sem recarregar a página. */
+  $("make").hidden = $("makeDirect").hidden = true;
+  const how = {
+    iso: `<h3>Como jogar</h3><ol>
+      <li>Copie a ISO para a pasta <code>CD</code> do pendrive (FAT32 ou exFAT). Com a pasta <code>ART</code> do pacote na raiz do pendrive, a capa aparece no OPL.</li>
+      <li>No OPL, abra <b>Jogos USB</b> e escolha o jogo. No PCSX2, é só abrir a ISO.</li>
+      <li>Os saves e as opções ficam no <b>cartão de memória</b>, na pasta <code>YFMPS2</code>.</li></ol>`,
+    app: `<h3>Como jogar</h3><ol>
+      <li>Extraia o ZIP na <b>raiz</b> do pendrive: fica <code>APPS/YFM_PS2/</code> com o ELF e o <code>YFM.bin</code>.</li>
+      <li>No OPL, abra a aba <b>Apps</b> e escolha <b>Yu-Gi-Oh! Forbidden Memories PS2</b>. Ou abra <code>YFM_PS2.ELF</code> pelo uLaunchELF.</li>
+      <li>Os saves e as opções ficam no pendrive, ao lado do ELF.</li></ol>`,
+    direct: `<h3>Como jogar</h3><ol>
+      <li>O port já está no pendrive, em <code>APPS/YFM_PS2/</code>.</li>
+      <li>No OPL, abra a aba <b>Apps</b> e escolha <b>Yu-Gi-Oh! Forbidden Memories PS2</b>. Ou abra <code>YFM_PS2.ELF</code> pelo uLaunchELF.</li>
+      <li>Os saves e as opções ficam no pendrive, ao lado do ELF.</li></ol>`,
+  };
+  $("doneTitle").textContent = kind === "direct" ? "Gravado no pendrive!" : "Pronto! O download começou.";
+  if (kind === "direct") $("saveAgain").replaceChildren();
+  $("howto").innerHTML = how[kind];
+  $("done").classList.add("show");
+}
+
+function fail(e) {
+  console.error(e);
+  $("status").innerHTML = `<span style="color:var(--err)">Não deu certo: ${esc(e && e.message ? e.message : e)}</span>`;
+  $("make").disabled = $("makeDirect").disabled = false;
+}
+
+$("make").onclick = async () => {
+  $("make").disabled = $("makeDirect").disabled = true;
+  try {
+    const bytes = await elf();
+    if (state.format === "iso") {
+      progress(0.5, "Montando a ISO…");
+      const iso = YFM.buildIso(bytes, state.bin, state.ptbr);
+      download(iso, YFM.ISO_NAME);
+      finish("iso");
+    } else {
+      const zip = await YFM.buildApp(bytes, state.bin, (p) => progress(0.08 + p * 0.9, `Conferindo o jogo (CRC)… ${Math.round(p * 100)}%`), state.ptbr);
+      download(zip, "YFM_PS2_app.zip");
+      finish("app");
+    }
+  } catch (e) { fail(e); }
+};
+
+$("makeDirect").onclick = async () => {
+  let root;
+  try { root = await window.showDirectoryPicker({ mode: "readwrite" }); } catch { return; }
+  $("make").disabled = $("makeDirect").disabled = true;
+  try {
+    const bytes = await elf();
+    await YFM.writeAppTo(root, bytes, state.bin, (p) => progress(0.08 + p * 0.9, `Copiando para o pendrive… ${Math.round(p * 100)}%`), state.ptbr);
+    finish("direct");
+  } catch (e) { fail(e); }
+};
+
+if (!("DecompressionStream" in window)) verdict("bad", "!", "Navegador antigo", ["Use um Chrome, Edge ou Firefox atualizado."]);
+</script>
+</body>
+</html>

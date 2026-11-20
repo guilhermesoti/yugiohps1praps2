@@ -55,10 +55,16 @@ static int compose_page = COMPOSE_PAGE;
 #define OFFSET 1024      /* XYOFFSET: primitive coordinates are window + 1024 */
 
 #define GS_DISPFB1 ((volatile uint64_t *)0x12000070)
+#define GS_DISPLAY1 ((volatile uint64_t *)0x12000080)
+#define GS_DISPLAY2 ((volatile uint64_t *)0x120000A0)
 #define GS_DISPFB2 ((volatile uint64_t *)0x12000090)
 #define GS_CSR ((volatile uint64_t *)0x12001000)
 
 static int active;
+/* Melhorias visuais do port (GsGpu_SetVisual): 0 original, 1 sem o
+ * pontilhado do PS1, 2 sem pontilhado + filtro bilinear nos polígonos 3D. */
+static int visual_mode = 0; /* sempre 0 (como no PS1) desde 20/11/2026: a Suavização saiu da tela AJUSTES */
+static int tex1_now; /* o TEX1 já enviado: 0 nearest, 1 bilinear */
 int GsGpu_Trace;
 int GsGpu_FrameLog; /* frames to summarize: primitives, fills, offsets, clips */
 static unsigned log_prims, log_cmds[4];
@@ -137,10 +143,10 @@ static void upload(int bp, int bw, int psm, int x, int y, int w, int h, const vo
 #define D1_MADR ((volatile uint32_t *)0x10009010)
 #define D1_QWC ((volatile uint32_t *)0x10009020)
 #define GS_BUSDIR ((volatile uint64_t *)0x12001040)
-static void download(int x, int y, int w, int h, uint16_t *out)
+static void download_from(int bp, int fbw, int x, int y, int w, int h, uint16_t *out)
 {
     unsigned qwc = (unsigned)(w * h * 2 + 15) / 16;
-    reg(R_BITBLTBUF, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24));
+    reg(R_BITBLTBUF, (uint64_t)bp | ((uint64_t)fbw << 16) | ((uint64_t)PSM_CT16 << 24));
     reg(R_TRXPOS, (uint64_t)x | ((uint64_t)y << 16));
     reg(R_TRXREG, (uint64_t)w | ((uint64_t)h << 32));
     reg(R_FINISH, 0);
@@ -168,6 +174,7 @@ static void download(int x, int y, int w, int h, uint16_t *out)
     FlushCache(0);
     reg(R_TRXDIR, 3);
 }
+static void download(int x, int y, int w, int h, uint16_t *out) { download_from(0, VRAM_FBW, x, y, w, h, out); }
 
 /* ---- the PS1 GPU's state ---- */
 static struct {
@@ -209,6 +216,9 @@ typedef struct {
     uint16_t tiles; /* 4x4 tiles of 64x64 texels, decoded */
 } Slot;
 static Slot slots[CACHE_SLOTS];
+/* Em 16:9 os 4 últimos slots viram a imagem larga (wide_*, abaixo). */
+static int cache_slots = CACHE_SLOTS;
+static int last_found = -1;
 static unsigned frame_number;
 static uint16_t tile_pixels[64 * 64] __attribute__((aligned(64)));
 
@@ -288,7 +298,6 @@ static int cached(int bank, int page_x, int page_y, int depth, int clut_x, int c
 {
     unsigned signature;
     int i, found = -1, oldest = 0, tx, ty;
-    static int last_found = -1;
     /* Most primitives in a row sample the slot the last one did, and
      * nothing on the CPU side changed in between: no signature then. */
     if (last_found >= 0) {
@@ -299,7 +308,7 @@ static int cached(int bank, int page_x, int page_y, int depth, int clut_x, int c
             goto have;
         }
     }
-    for (i = 0; i < CACHE_SLOTS; i++) {
+    for (i = 0; i < cache_slots; i++) {
         Slot *s = &slots[i];
         if (s->used && s->bank == bank && s->page_x == page_x && s->page_y == page_y && s->depth == depth &&
             (depth == 2 || !bank || (s->clut_x == clut_x && s->clut_y == clut_y))) {
@@ -421,6 +430,135 @@ static inline uint64_t uv(int u, int v)
     return (uint64_t)(((u << 4) + 8) & 0x3FFF) | ((uint64_t)(((v << 4) + 8) & 0x3FFF) << 16);
 }
 
+/* ---- 16:9 (a mesma ideia do port de PC, soft_gpu.c) ----
+ * A área de desenho de tela cheia do jogo (320 de largura) ganha uma
+ * companheira 4/3 mais larga (428) na memória do GS: cada primitiva desenhada
+ * na área é desenhada de novo nela, deslocada `margin` para a direita. O GTE
+ * projeta o cenário além das bordas do 4:3 (o console só corta), então os
+ * lados mostram mais do campo, sem esticar nada. Polígonos e linhas (o 3D)
+ * vão até as bordas largas; sprites (as telas 2D) ficam no corte do 4:3,
+ * exceto preenchimentos de largura inteira (fades, limpeza da tela). A VRAM
+ * do jogo nunca é alargada: nada que o jogo lê muda. Cargas, fills e cópias
+ * na área são espelhados no centro. A imagem larga ocupa os 4 últimos slots
+ * do cache de texturas (páginas 408-463). */
+#define WIDE_TARGETS 2
+#define WIDE_PAGE (CACHE_PAGE + 15 * 16)
+#define WIDE_FBW 7    /* 448 de largura */
+#define WIDE_PAGES 28 /* 7 x 4 páginas de 64x64 */
+#define WIDE_SHOW 426 /* 2560 / 6: o que o PCRTC mostra com MAGH 5 */
+typedef struct {
+    int used, x1, y1, x2, y2, margin, drawn;
+    unsigned stamp;
+} WideTarget;
+static WideTarget wides[WIDE_TARGETS];
+static int wide_on;
+static unsigned wide_clock;
+static void set_scissor(void);
+static void set_mask(void);
+
+static int wide_fbp(const WideTarget *wt) { return WIDE_PAGE + (int)(wt - wides) * WIDE_PAGES; }
+
+static int wide_margin(int x1, int y1, int x2, int y2)
+{
+    int w = x2 - x1 + 1, h = y2 - y1 + 1;
+    if (!wide_on || w != 320 || h < 192 || h > 256) return 0;
+    return 54; /* (320 / 6 + 1) & ~1: 428 ao todo */
+}
+
+/* Desenho na imagem larga: coordenadas de janela = x - x1 + margin. */
+static void wide_begin(const WideTarget *wt, int scissor_x1, int scissor_x2)
+{
+    reg(R_FRAME, (uint64_t)wide_fbp(wt) | ((uint64_t)WIDE_FBW << 16) | ((uint64_t)PSM_CT16 << 24));
+    reg(R_XYOFFSET, ((uint64_t)(OFFSET + wt->x1 - wt->margin) << 4) | ((uint64_t)((OFFSET + wt->y1) << 4) << 32));
+    reg(R_SCISSOR, (uint64_t)scissor_x1 | ((uint64_t)scissor_x2 << 16) | ((uint64_t)(wt->y2 - wt->y1) << 48));
+}
+
+static void wide_end(void)
+{
+    reg(R_FRAME, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24));
+    reg(R_XYOFFSET, ((uint64_t)OFFSET << 4) | ((uint64_t)(OFFSET << 4) << 32));
+    set_scissor();
+}
+
+/* Um retângulo de cor sólida na imagem larga (coordenadas de janela). */
+static void wide_rect(const WideTarget *wt, int wx, int wy, int ww, int wh, uint32_t rgb)
+{
+    if (ww <= 0 || wh <= 0) return;
+    wide_begin(wt, 0, wt->x2 - wt->x1 + 2 * wt->margin);
+    reg(R_FBA, 0);
+    reg(R_TEST, (1ull << 16) | (1ull << 17));
+    reg(R_DTHE, 0);
+    reg(R_PRIM, 6);
+    reg(R_RGBAQ, rgbaq(rgb & 255, (rgb >> 8) & 255, (rgb >> 16) & 255, 0));
+    reg(R_XYZ2, xyz(wt->x1 - wt->margin + wx, wt->y1 + wy));
+    reg(R_XYZ2, xyz(wt->x1 - wt->margin + wx + ww, wt->y1 + wy + wh));
+    set_mask();
+    wide_end();
+}
+
+/* O que a VRAM tem no retângulo, para o centro da imagem larga (cópia
+ * local do GS). Com `sides`, os lados das mesmas linhas recebem a cor `rgb`
+ * (uma limpeza de largura inteira limpa a tela larga toda). */
+static void wide_copy_in(WideTarget *wt, int x, int y, int w, int h, int sides, uint32_t rgb)
+{
+    int x0 = x > wt->x1 ? x : wt->x1, y0 = y > wt->y1 ? y : wt->y1;
+    int xe = x + w - 1 < wt->x2 ? x + w - 1 : wt->x2, ye = y + h - 1 < wt->y2 ? y + h - 1 : wt->y2;
+    if (x0 > xe || y0 > ye) return;
+    reg(R_BITBLTBUF, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24) | ((uint64_t)(wide_fbp(wt) * 32) << 32) |
+                         ((uint64_t)WIDE_FBW << 48) | ((uint64_t)PSM_CT16 << 56));
+    reg(R_TRXPOS, (uint64_t)x0 | ((uint64_t)y0 << 16) | ((uint64_t)(x0 - wt->x1 + wt->margin) << 32) |
+                      ((uint64_t)(y0 - wt->y1) << 48));
+    reg(R_TRXREG, (uint64_t)(xe - x0 + 1) | ((uint64_t)(ye - y0 + 1) << 32));
+    reg(R_TRXDIR, 2);
+    reg(R_TEXFLUSH, 0);
+    if (sides && x0 == wt->x1 && xe == wt->x2) {
+        wide_rect(wt, 0, y0 - wt->y1, wt->margin, ye - y0 + 1, rgb);
+        wide_rect(wt, wt->x2 - wt->x1 + 1 + wt->margin, y0 - wt->y1, wt->margin, ye - y0 + 1, rgb);
+    }
+}
+
+static void wide_mirror(int x, int y, int w, int h, int sides, uint32_t rgb)
+{
+    int t;
+    if (!wide_on) return;
+    for (t = 0; t < WIDE_TARGETS; t++)
+        if (wides[t].used) wide_copy_in(&wides[t], x & 1023, y & 511, w, h, sides, rgb);
+}
+
+/* A imagem larga da área de desenho atual, criada no primeiro uso; NULL sem
+ * 16:9 ou fora de uma tela cheia. */
+static WideTarget *wide_target(void)
+{
+    int margin = wide_margin(gpu.clip_x1, gpu.clip_y1, gpu.clip_x2, gpu.clip_y2), t, oldest = 0;
+    WideTarget *wt;
+    if (!margin) return NULL;
+    for (t = 0; t < WIDE_TARGETS; t++) {
+        wt = &wides[t];
+        if (wt->used && wt->x1 == gpu.clip_x1 && wt->y1 == gpu.clip_y1 && wt->x2 == gpu.clip_x2 &&
+            wt->y2 == gpu.clip_y2) {
+            wt->stamp = ++wide_clock;
+            return wt;
+        }
+    }
+    for (t = 0; t < WIDE_TARGETS; t++) {
+        if (!wides[t].used) {
+            oldest = t;
+            break;
+        }
+        if (wides[t].stamp < wides[oldest].stamp) oldest = t;
+    }
+    wt = &wides[oldest];
+    wt->used = 1;
+    wt->x1 = gpu.clip_x1, wt->y1 = gpu.clip_y1, wt->x2 = gpu.clip_x2, wt->y2 = gpu.clip_y2;
+    wt->margin = margin;
+    wt->drawn = 0;
+    wt->stamp = ++wide_clock;
+    /* Começa pelo que a VRAM tem, para não nascer preta no meio do quadro. */
+    wide_rect(wt, 0, 0, wt->x2 - wt->x1 + 1 + 2 * margin, wt->y2 - wt->y1 + 1, 0);
+    wide_copy_in(wt, wt->x1, wt->y1, wt->x2 - wt->x1 + 1, wt->y2 - wt->y1 + 1, 0, 0);
+    return wt;
+}
+
 /* One pass of a primitive: `type` the GS's (3 triangle, 1 line, 6 sprite). */
 static void emit(int type, const Vertex *v, int count, int pass_semi, int test)
 {
@@ -441,6 +579,26 @@ static void emit(int type, const Vertex *v, int count, int pass_semi, int test)
 #define TEST_ALPHA(atst, aref) (1u | ((atst) << 1) | ((aref) << 4))
 #define TEST_NONE 0u
 
+/* As passadas de uma primitiva com o estado (TEX0, CLAMP, ALPHA, DTHE) já
+ * enviado: na VRAM e, em 16:9, de novo na imagem larga. */
+static void passes(int type, const Vertex *v, int count, int smooth)
+{
+    if (prim.textured) {
+        if (prim.semi) {
+            emit(type, v, count, 0, TEST_ALPHA(4u, 0x40u)); /* the opaque texels */
+            emit(type, v, count, 1, TEST_ALPHA(4u, 0x80u)); /* the ones with the mask bit, blended */
+        } else if (smooth) {
+            /* Na borda de um recorte, o alfa filtrado fica entre 0 e 0x40:
+             * desenha onde pelo menos metade vem de texels visíveis. */
+            emit(type, v, count, 0, TEST_ALPHA(5u, 0x20u));
+        } else {
+            emit(type, v, count, 0, TEST_ALPHA(7u, 0u)); /* all but the transparent ones */
+        }
+    } else {
+        emit(type, v, count, prim.semi, TEST_NONE);
+    }
+}
+
 static void draw(int type, Vertex *v, int count)
 {
     int i, u0 = 255, v0 = 255, u1 = 0, v1 = 0, x0 = 1 << 20, y0 = 1 << 20, x1 = -(1 << 20), y1 = -(1 << 20);
@@ -458,21 +616,49 @@ static void draw(int type, Vertex *v, int count)
     }
     if (x1 - x0 > 1023 || y1 - y0 > 511) return; /* the console skips these */
     primitives++;
+    WideTarget *wt = wide_on ? wide_target() : NULL; /* antes do estado: criar o alvo mexe em PRIM/TEST/DTHE */
+    /* Filtro bilinear só em polígonos texturizados (modelos 3D, campo, cartas
+     * girando). Ficam de fora: sprites e retângulos (texto, menus, 2D), os
+     * semitransparentes (as duas passadas testam o alfa exato de cada
+     * texel, que o filtro mistura) e os com janela de textura (repetição). */
+    int smooth = visual_mode >= 2 && type == 3 && prim.textured && !prim.semi && !gpu.window_mask_x &&
+                 !gpu.window_mask_y;
     if (prim.textured) {
         reg(R_TEX0, tex0_for(u0, v0, u1, v1));
-        reg(R_CLAMP, clamp_for());
-    }
-    reg(R_DTHE, gpu.dither && prim.gouraud && !(prim.textured && prim.raw) ? 1 : 0);
-    if (prim.semi) reg(R_ALPHA, alpha_for(gpu.semi));
-    if (prim.textured) {
-        if (prim.semi) {
-            emit(type, v, count, 0, TEST_ALPHA(4u, 0x40u)); /* the opaque texels */
-            emit(type, v, count, 1, TEST_ALPHA(4u, 0x80u)); /* the ones with the mask bit, blended */
+        if (smooth) {
+            /* REGION_CLAMP no retângulo de texels do polígono: o filtro não
+             * puxa a cor do vizinho no atlas nem de blocos não decodificados. */
+            reg(R_CLAMP, 2 | (2 << 2) | ((uint64_t)u0 << 4) | ((uint64_t)u1 << 14) | ((uint64_t)v0 << 24) |
+                             ((uint64_t)v1 << 34));
         } else {
-            emit(type, v, count, 0, TEST_ALPHA(7u, 0u)); /* all but the transparent ones */
+            reg(R_CLAMP, clamp_for());
         }
-    } else {
-        emit(type, v, count, prim.semi, TEST_NONE);
+        if (smooth != tex1_now) {
+            reg(R_TEX1, smooth ? (1ull << 5) | (1ull << 6) : 0); /* MMAG, MMIN: LINEAR */
+            tex1_now = smooth;
+        }
+    }
+    reg(R_DTHE, visual_mode == 0 && gpu.dither && prim.gouraud && !(prim.textured && prim.raw) ? 1 : 0);
+    if (prim.semi) reg(R_ALPHA, alpha_for(gpu.semi));
+    passes(type, v, count, smooth);
+    if (wt) {
+        /* De novo na imagem larga. Sprites: o corte do 4:3, menos os
+         * preenchimentos de largura inteira, que cobrem os lados também. */
+        int w = wt->x2 - wt->x1 + 1, m = wt->margin;
+        if (type != 6) {
+            wide_begin(wt, 0, w + 2 * m - 1);
+            passes(type, v, count, smooth);
+        } else if (!prim.textured && x0 <= wt->x1 && x1 > wt->x2) {
+            Vertex wider[2] = {v[0], v[1]};
+            wider[0].x -= m, wider[1].x += m;
+            wide_begin(wt, 0, w + 2 * m - 1);
+            passes(type, wider, count, smooth);
+        } else {
+            wide_begin(wt, m, m + w - 1);
+            passes(type, v, count, smooth);
+        }
+        wide_end();
+        wt->drawn++;
     }
     mark_drawn(x0, y0, type == 6 ? x1 - 1 : x1, type == 6 ? y1 - 1 : y1);
     if (GsGpu_Trace) {
@@ -669,6 +855,7 @@ static void fill(int x, int y, int w, int h, uint32_t rgb)
     reg(R_XYZ2, xyz(x + w, y + h));
     set_scissor();
     set_mask();
+    wide_mirror(x, y, w, h, 1, rgb);
 }
 
 static void flush_pending(void);
@@ -760,6 +947,7 @@ static void load_now(int x, int y, int w, int h)
         upload(0, VRAM_FBW, PSM_CT16, x, y, w, h, staging, (unsigned)(w * h * 2));
     }
     touch_cpu(x, y, w, h);
+    wide_mirror(x, y, w, h, 0, 0);
     for (by = y >> 5; by <= (y + h - 1) >> 5 && by < 16; by++)
         for (bx = x >> 6; bx <= (x + w - 1) >> 6 && bx < 16; bx++)
             if ((by << 5) >= y && ((by + 1) << 5) <= y + h && (bx << 6) >= x && ((bx + 1) << 6) <= x + w)
@@ -831,6 +1019,7 @@ void GsGpu_Move(int sx, int sy, int dx, int dy, int w, int h)
     reg(R_TRXREG, (uint64_t)w | ((uint64_t)h << 32));
     reg(R_TRXDIR, 2);
     reg(R_TEXFLUSH, 0);
+    wide_mirror(dx, dy, w, h, 0, 0);
     {
         int saved_x1 = gpu.clip_x1, saved_y1 = gpu.clip_y1, saved_x2 = gpu.clip_x2, saved_y2 = gpu.clip_y2;
         gpu.clip_x1 = 0, gpu.clip_y1 = 0, gpu.clip_x2 = 1023, gpu.clip_y2 = 511;
@@ -854,23 +1043,85 @@ int GsGpu_Stale(int x, int y, int w, int h)
 static int shown_x = -1, shown_y, shown_w, shown_h, shown_24;
 static uint32_t picture24[320 * 256] __attribute__((aligned(64)));
 
+static int shown_fbp, shown_fbw, shown_psm, shown_dx, shown_dy, shown_dw, shown_dh;
 static void environment(void);
+/* O modo de vídeo da tela AJUSTES (ajustes.c): 0 240p, 1 480p, 2 480i. */
+static int video_mode;
+void GsGpu_SetVideo(int mode) { video_mode = mode < 0 || mode > 2 ? 0 : mode; }
+int GsGpu_Video(void) { return video_mode; }
+
+/* A largura na tela: no 480p o PCRTC tem 1440 pontos por linha, e a imagem
+ * (320 ou 426) é ampliada pelo inteiro que cabe e centrada. */
+/* Posição da imagem na TV (AJUSTES, como o ajuste de tela de um monitor):
+ * pos_x em pontos do quadro de 320 (8 VCK no NTSC, 4 no 480p), pos_y em
+ * linhas do quadro de 240. Só muda onde o PCRTC começa a mostrar: não custa
+ * nada e não perde nitidez. */
+static int pos_x, pos_y, pos_mudou;
+
+static void screen_for(int key, int w, int h)
+{
+    int x = 0, y = 0;
+    pos_mudou = 0;
+    if (key == 1) x = (1440 - (1440 / w) * w) / 2;
+    /* O libgraph põe o NTSC na linha 26 com 224 linhas; o PS1 mostra 240:
+     * sobe a imagem o que passa de 224 (senão a caixa do FIELD era cortada
+     * embaixo na TV). */
+    if ((key == 0 || key == 2) && h > 224) y = -((h - 224) / 2);
+    graph_set_screen(x + (key == 1 ? 4 : 8) * pos_x, y + pos_y, w, h);
+    if (key == 2) {
+        /* 480i com o quadro de 240 linhas (FFMD campo): a TV tem 480 linhas,
+         * então cada linha do quadro vale duas (MAGV 1) e a altura na tela é
+         * 2h. O libgraph não amplia (448 / 240 = 1) e mandava só h linhas:
+         * no console a imagem ocupava a metade de cima da TV (o PCSX2 estica
+         * e escondia). Os mesmos números da gsKit (port do SMW): NTSC
+         * começa na linha 26 do campo, 50 em linhas de quadro; o ajuste y
+         * acima também dobra. */
+        int magh = 2560 / w;
+        uint64_t display = (uint64_t)(652 + x + 8 * pos_x) | ((uint64_t)(50 + 2 * (y + pos_y)) << 12) | ((uint64_t)(magh - 1) << 23) |
+                           ((uint64_t)1 << 27) | ((uint64_t)(magh * w - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
+        *GS_DISPLAY1 = display;
+        *GS_DISPLAY2 = display;
+    } else if (key == 1) {
+        /* 480p com o quadro de 240 linhas: a mesma conta. O libgraph calcula
+         * MAGV 2 (480 / 240) mas manda só h linhas de tela, que leem h / 2
+         * linhas do quadro: a metade de cima com o dobro da altura (era o que
+         * o PCSX2 mostrava). Altura na tela 2h, a partir da linha 35. A largura
+         * é a da imagem ampliada (magh * w), não a do modo inteiro (1440):
+         * senão o PCRTC lia pontos da VRAM além do quadro (lixo à direita). */
+        int magh = 1440 / w;
+        uint64_t display = (uint64_t)(232 + x + 4 * pos_x) | ((uint64_t)(35 + 2 * pos_y) << 12) | ((uint64_t)(magh - 1) << 23) |
+                           ((uint64_t)1 << 27) | ((uint64_t)(magh * w - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
+        *GS_DISPLAY1 = display;
+        *GS_DISPLAY2 = display;
+    }
+}
+
+/* O modo de vídeo que o PCRTC tem agora (display() só o refaz quando muda).
+ * O GsGpu_Init esquece: o graph_initialize põe o modo padrão. */
+static int mode_w = -1, mode_h = -1, mode_key = -1;
+
 static void display(int fbp, int fbw, int psm, int x, int y, int w, int h, int interlace)
 {
-    static int mode_w = -1, mode_h, mode_interlace;
+    /* Imagens de 480 linhas (raras) ficam no entrelaçado de quadro inteiro;
+     * as outras, no modo escolhido nos AJUSTES. */
+    int key = interlace ? 99 : video_mode;
     uint64_t dispfb = (uint64_t)fbp | ((uint64_t)fbw << 9) | ((uint64_t)psm << 15) | ((uint64_t)x << 32) | ((uint64_t)y << 43);
-    if (w != mode_w || h != mode_h || interlace != mode_interlace) {
-        graph_set_mode(interlace ? GRAPH_MODE_INTERLACED : GRAPH_MODE_NONINTERLACED, GRAPH_MODE_NTSC,
-                       GRAPH_MODE_FRAME, GRAPH_DISABLE);
-        /* O libgraph poe o NTSC sem entrelacamento na linha 26 com 224 linhas.
-         * O PS1 mostra 240 linhas de 16 a 256: com 240 a partir da 26 as
-         * ultimas ~8 linhas caem fora da area visivel da TV (cortava a caixa
-         * do FIELD embaixo no tabuleiro). Sobe a imagem o que passa de 224. */
-        graph_set_screen(0, (!interlace && h > 224) ? -((h - 224) / 2) : 0, w, h);
+    shown_fbp = fbp, shown_fbw = fbw, shown_psm = psm, shown_dx = x, shown_dy = y, shown_dw = w, shown_dh = h;
+    if (h != mode_h || key != mode_key) {
+        if (key == 99) graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_NTSC, GRAPH_MODE_FRAME, GRAPH_DISABLE);
+        else if (key == 1) graph_set_mode(GRAPH_MODE_NONINTERLACED, GRAPH_MODE_HDTV_480P, GRAPH_MODE_FRAME, GRAPH_DISABLE);
+        else if (key == 2) graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_NTSC, GRAPH_MODE_FIELD, GRAPH_DISABLE);
+        else graph_set_mode(GRAPH_MODE_NONINTERLACED, GRAPH_MODE_NTSC, GRAPH_MODE_FRAME, GRAPH_DISABLE);
+        screen_for(key, w, h);
         graph_set_bgcolor(0, 0, 0);
         graph_set_output(1, 0, 1, 0, 1, 0xFF);
-        mode_w = w, mode_h = h, mode_interlace = interlace;
+        mode_w = w, mode_h = h, mode_key = key;
         environment(); /* a mode change resets the GS's drawing registers */
+    } else if (w != mode_w || pos_mudou) {
+        /* Só a largura (4:3 <-> 16:9): a ampliação horizontal do PCRTC muda
+         * (320: MAGH 7; 426: MAGH 5), o modo de vídeo não. Ou a posição. */
+        screen_for(key, w, h);
+        mode_w = w;
     }
     *GS_DISPFB1 = dispfb;
     *GS_DISPFB2 = dispfb;
@@ -884,20 +1135,119 @@ static int overlay_lost = 1; /* kept for the movie path, which still marks it */
 /* The buffer the game shows is copied aside and the menu's box written over
  * the copy, which is shown instead: the game's own buffers stay as it drew
  * them. Two copies alternate, so the one on screen is never written. */
-static int draw_overlay(int x, int y)
+static int draw_overlay_to(int page, int x, int y)
 {
     int changed = 0, bx, by, bw, bh;
     const uint16_t *box = Ps2_OverlayBox(&changed, &bx, &by, &bw, &bh);
     if (!box) return 0;
-    reg(R_BITBLTBUF, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24) | ((uint64_t)(compose_page * 32) << 32) |
+    reg(R_BITBLTBUF, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24) | ((uint64_t)(page * 32) << 32) |
                          (5ull << 48) | ((uint64_t)PSM_CT16 << 56));
     reg(R_TRXPOS, (uint64_t)(x & 2047) | ((uint64_t)(y & 2047) << 16));
     reg(R_TRXREG, 320ull | (240ull << 32));
     reg(R_TRXDIR, 2);
-    upload(compose_page * 32, 5, PSM_CT16, bx, by, bw, bh, box, (unsigned)(bw * bh * 2));
+    upload(page * 32, 5, PSM_CT16, bx, by, bw, bh, box, (unsigned)(bw * bh * 2));
     (void)changed;
     return 1;
 }
+static int draw_overlay(int x, int y) { return draw_overlay_to(compose_page, x, y); }
+
+/* ---- Tamanho da imagem (tela AJUSTES): a TV pelo AV corta as bordas
+ * (overscan); com o tamanho abaixo de 100% cada quadro mostrado é
+ * redesenhado menor, centrado, com borda preta, numa de duas imagens de
+ * saída (uma é mostrada enquanto a outra é desenhada). O PCRTC só amplia
+ * por inteiros, por isso o desenho com textura (sem filtro) no próprio GS.
+ * Saída: em 4:3, as duas imagens de composição (páginas 472 e 492, FBW 5);
+ * em 16:9 (até 426 de largura, FBW 7, 28 páginas cada) 472 e 376, com o
+ * cache de texturas em 13 slots. Com menu do port por cima, a imagem 1:1 é
+ * montada antes nas páginas dos vídeos de 24 bits (128-147), que não tocam
+ * junto com um menu. */
+static int escala_h = 100, escala_v = 100, saida_b; /* largura e altura, % */
+#define REDUZIDA (escala_h < 100 || escala_v < 100)
+static void cache_limit(void);
+
+static int saida_pagina(void)
+{
+    saida_b = !saida_b;
+    if (wide_on) return saida_b ? 376 : COMPOSE_PAGE;
+    return saida_b ? COMPOSE_PAGE + 20 : COMPOSE_PAGE;
+}
+
+/* Desenha a área (sx, sy, sw x sh) da imagem em src_page/src_fbw/src_psm
+ * reduzida (largura escala_h %, altura escala_v %) numa imagem de saída, e a mostra. */
+static void mostra_reduzida(int src_page, int src_fbw, int src_psm, int sx, int sy, int sw, int sh)
+{
+    const int page = saida_pagina(), fbw = sw > 320 ? WIDE_FBW : 5;
+    int ow = (sw * escala_h / 100) & ~1, oh = (sh * escala_v / 100) & ~1;
+    int ox = (sw - ow) / 2, oy = (sh - oh) / 2;
+    int tw = src_fbw * 64 > 512 ? 10 : 9;
+#define XY_SAIDA(px, py) ((uint64_t)((((px) + OFFSET) << 4) & 0xFFFF) | ((uint64_t)((((py) + OFFSET) << 4) & 0xFFFF) << 16))
+    reg(R_TEXFLUSH, 0);
+    reg(R_FRAME, (uint64_t)page | ((uint64_t)fbw << 16) | ((uint64_t)PSM_CT16 << 24));
+    reg(R_XYOFFSET, ((uint64_t)OFFSET << 4) | ((uint64_t)(OFFSET << 4) << 32));
+    reg(R_SCISSOR, (uint64_t)(sw - 1) << 16 | ((uint64_t)(sh - 1) << 48));
+    reg(R_TEST, (1ull << 16) | (1ull << 17));
+    reg(R_FBA, 0);
+    /* Um quadro de 24/32 bits vira 16 bits: com o pontilhado do GS. */
+    reg(R_DTHE, src_psm != PSM_CT16 ? 1 : 0);
+    /* Só as bordas ficam pretas (nunca a imagem toda): se a saída for
+     * desenhada enquanto a TV ainda a lê, apagar tudo antes aparecia como
+     * faixas pretas correndo pela tela (console, 20/11/2026). */
+    reg(R_PRIM, 6);
+    reg(R_RGBAQ, rgbaq(0, 0, 0, 0x80));
+    if (oy > 0) {
+        reg(R_XYZ2, XY_SAIDA(0, 0));
+        reg(R_XYZ2, XY_SAIDA(sw, oy));
+        reg(R_XYZ2, XY_SAIDA(0, oy + oh));
+        reg(R_XYZ2, XY_SAIDA(sw, sh));
+    }
+    if (ox > 0) {
+        reg(R_XYZ2, XY_SAIDA(0, oy));
+        reg(R_XYZ2, XY_SAIDA(ox, oy + oh));
+        reg(R_XYZ2, XY_SAIDA(ox + ow, oy));
+        reg(R_XYZ2, XY_SAIDA(sw, oy + oh));
+    }
+    reg(R_TEX0, (uint64_t)(src_page * 32) | ((uint64_t)src_fbw << 14) | ((uint64_t)src_psm << 20) | ((uint64_t)tw << 26) |
+                    (9ull << 30) | (1ull << 35)); /* TCC 0 (só a cor), TFX decal */
+    /* Sem filtro (ponto mais próximo): com o bilinear a imagem reduzida
+     * ficava borrada no console (pelo AV, 20/11/2026); assim os pixels e o
+     * texto ficam nítidos, e só algumas linhas/colunas somem ou dobram. */
+    reg(R_TEX1, 0);
+    reg(R_CLAMP, 2 | (2 << 2) | ((uint64_t)sx << 4) | ((uint64_t)(sx + sw - 1) << 14) | ((uint64_t)sy << 24) |
+                     ((uint64_t)(sy + sh - 1) << 34));
+    reg(R_PRIM, 6 | (1 << 4) | (1 << 8)); /* sprite com textura, UV */
+    reg(R_UV, (uint64_t)((sx << 4) & 0x3FFF) | ((uint64_t)((sy << 4) & 0x3FFF) << 16));
+    reg(R_XYZ2, XY_SAIDA(ox, oy));
+    reg(R_UV, (uint64_t)(((sx + sw) << 4) & 0x3FFF) | ((uint64_t)(((sy + sh) << 4) & 0x3FFF) << 16));
+    reg(R_XYZ2, XY_SAIDA(ox + ow, oy + oh));
+#undef XY_SAIDA
+    environment(); /* devolve FRAME, XYOFFSET, recorte e TEX1 do jogo (e envia) */
+    wait_idle();
+    display(page, fbw, PSM_CT16, 0, 0, sw, sh, 0);
+}
+
+void GsGpu_SetTamanho(int largura, int altura)
+{
+    largura = largura < 80 ? 80 : largura > 100 ? 100 : largura;
+    altura = altura < 80 ? 80 : altura > 100 ? 100 : altura;
+    if (largura == escala_h && altura == escala_v) return;
+    if (active) {
+        flush_pending();
+        wait_idle();
+    }
+    escala_h = largura, escala_v = altura;
+    cache_limit();
+}
+int GsGpu_Largura(void) { return escala_h; }
+
+void GsGpu_SetPosicao(int x, int y)
+{
+    x = x < -16 ? -16 : x > 16 ? 16 : x;
+    y = y < -16 ? -16 : y > 16 ? 16 : y;
+    if (x != pos_x || y != pos_y) pos_x = x, pos_y = y, pos_mudou = 1;
+}
+int GsGpu_PosicaoX(void) { return pos_x; }
+int GsGpu_PosicaoY(void) { return pos_y; }
+int GsGpu_Altura(void) { return escala_v; }
 
 void GsGpu_Show(int x, int y, int w, int h, int rgb24)
 {
@@ -905,6 +1255,30 @@ void GsGpu_Show(int x, int y, int w, int h, int rgb24)
     shown_24_now = rgb24;
     if (rgb24) return;
     flush_pending();
+    if (REDUZIDA && h <= 256) {
+        if (draw_overlay_to(FBP_24, x & 1023, y & 511)) {
+            mostra_reduzida(FBP_24, 5, PSM_CT16, 0, 0, w, h);
+            return;
+        }
+        if (wide_on) {
+            int t;
+            for (t = 0; t < WIDE_TARGETS; t++) {
+                WideTarget *wt = &wides[t];
+                if (wt->used && wt->x1 == (x & 1023) && wt->y1 == (y & 511) && wt->x2 - wt->x1 + 1 == w &&
+                    wt->y2 - wt->y1 + 1 >= h) {
+                    if (!wt->drawn) {
+                        wide_rect(wt, 0, 0, wt->margin, h, 0);
+                        wide_rect(wt, w + wt->margin, 0, wt->margin, h, 0);
+                    }
+                    wt->drawn = 0;
+                    mostra_reduzida(wide_fbp(wt), WIDE_FBW, PSM_CT16, (w + 2 * wt->margin - WIDE_SHOW) / 2, 0, WIDE_SHOW, h);
+                    return;
+                }
+            }
+        }
+        mostra_reduzida(0, VRAM_FBW, PSM_CT16, x & 1023, y & 511, w, h);
+        return;
+    }
     if (draw_overlay(x & 1023, y & 511)) {
         wait_idle();
         display(compose_page, 5, PSM_CT16, 0, 0, w, h, h > 256);
@@ -912,6 +1286,25 @@ void GsGpu_Show(int x, int y, int w, int h, int rgb24)
          * being scanned out (that tore the menu). */
         compose_page = compose_page == COMPOSE_PAGE ? COMPOSE_PAGE + 20 : COMPOSE_PAGE;
         return;
+    }
+    if (wide_on) {
+        int t;
+        for (t = 0; t < WIDE_TARGETS; t++) {
+            WideTarget *wt = &wides[t];
+            if (wt->used && wt->x1 == (x & 1023) && wt->y1 == (y & 511) && wt->x2 - wt->x1 + 1 == w &&
+                wt->y2 - wt->y1 + 1 >= h) {
+                if (!wt->drawn) {
+                    /* Nada desenhado desde a última vez (um vídeo, uma imagem
+                     * carregada direto na VRAM): os lados estão velhos. */
+                    wide_rect(wt, 0, 0, wt->margin, h, 0);
+                    wide_rect(wt, w + wt->margin, 0, wt->margin, h, 0);
+                }
+                wt->drawn = 0;
+                wait_idle();
+                display(wide_fbp(wt), WIDE_FBW, PSM_CT16, (w + 2 * wt->margin - WIDE_SHOW) / 2, 0, WIDE_SHOW, h, h > 256);
+                return;
+            }
+        }
     }
     wait_idle();
     display(0, VRAM_FBW, PSM_CT16, x & 1023, y & 511, w, h, h > 256);
@@ -944,7 +1337,8 @@ void GsGpu_Present(const uint16_t *vram, int x, int y, int w, int h, int rgb24)
         upload(FBP_24 * 32, 5, PSM_CT24, 0, 0, 320, ch, picture24, (unsigned)(960 * ch));
         overlay_lost = 1;
         flush();
-        display(FBP_24, 5, PSM_CT24, 0, 0, cw, ch, h > 256);
+        if (REDUZIDA && h <= 256) mostra_reduzida(FBP_24, 5, PSM_CT24, 0, 0, cw, ch);
+        else display(FBP_24, 5, PSM_CT24, 0, 0, cw, ch, h > 256);
     } else {
         GsGpu_Show(x, y, w, h, 0); /* with the port's menus, redrawn at each VBlank */
     }
@@ -964,6 +1358,47 @@ unsigned GsGpu_Stats(unsigned *tiles)
 }
 
 int GsGpu_Active(void) { return active; }
+
+void GsGpu_SetVisual(int mode) { visual_mode = mode < 0 ? 0 : mode > 2 ? 2 : mode; }
+
+void GsGpu_SetWide(int on)
+{
+    int i;
+    on = on != 0;
+    if (on == wide_on) return;
+    flush_pending();
+    wait_idle();
+    memset(wides, 0, sizeof(wides));
+    wide_on = on;
+    (void)i;
+    cache_limit();
+}
+
+/* A imagem larga usa as páginas dos 4 últimos slots do cache; com o tamanho
+ * reduzido em 16:9, mais 2 (páginas 376-407) para uma das saídas. */
+static void cache_limit(void)
+{
+    int i;
+    cache_slots = !wide_on ? CACHE_SLOTS : REDUZIDA ? 13 : 15;
+    for (i = cache_slots; i < CACHE_SLOTS; i++) slots[i].used = 0;
+    if (last_found >= cache_slots) last_found = -1;
+}
+int GsGpu_Wide(void) { return wide_on; }
+int GsGpu_Visual(void) { return visual_mode; }
+
+/* A imagem exibida agora (16 bits; a larga em 16:9, a com menu por cima),
+ * para depuração: até 448 x 256 em `out`. Retorna 0 num vídeo de 24 bits. */
+int GsGpu_ReadShown(uint16_t *out, int *w, int *h)
+{
+    int dw = shown_dw > 448 ? 448 : shown_dw, dh = shown_dh > 256 ? 256 : shown_dh, row;
+    if (!active || shown_psm != PSM_CT16 || dw <= 0 || dh <= 0) return 0;
+    flush_pending();
+    for (row = 0; row < dh; row += 32)
+        download_from(shown_fbp * 32, shown_fbw, shown_dx, shown_dy + row, (dw + 7) & ~7, dh - row < 32 ? dh - row : 32,
+                      out + row * ((dw + 7) & ~7));
+    *w = (dw + 7) & ~7, *h = dh;
+    return 1;
+}
 
 /* The GS's VRAM into `out` (1024 x 512 words), for debugging. */
 void GsGpu_ReadVram(uint16_t *out)
@@ -993,6 +1428,7 @@ static void environment(void)
     reg(R_XYOFFSET, ((uint64_t)OFFSET << 4) | ((uint64_t)(OFFSET << 4) << 32));
     reg(R_TEXA, 0x40 | (1ull << 15) | (0x80ull << 32));
     reg(R_TEX1, 0);
+    tex1_now = 0;
     reg(R_COLCLAMP, 1);
     reg(R_DIMX, dimx);
     reg(R_DTHE, 0);
@@ -1000,6 +1436,24 @@ static void environment(void)
     set_scissor();
     set_mask();
     flush();
+}
+
+/* Um quadro 320 x 240 de 32 bits (0xRRGGBB) na tela, fora do jogo: a tela
+ * AJUSTES. Usa a área dos vídeos de 24 bits (páginas 128-167). O quadro é
+ * convertido ali mesmo para a ordem do GS (sem outro buffer: a memória do
+ * port é apertada) e deve estar alinhado em 16 bytes. */
+void GsGpu_ShowPicture(uint32_t *rgb)
+{
+    int i;
+    if (!active) return;
+    for (i = 0; i < 320 * 240; i++) {
+        uint32_t c = rgb[i];
+        rgb[i] = ((c >> 16) & 0xFF) | (c & 0xFF00) | ((c & 0xFF) << 16) | 0x80000000u; /* GS: R no byte baixo */
+    }
+    upload(FBP_24 * 32, 5, PSM_CT32, 0, 0, 320, 240, rgb, 320 * 240 * 4);
+    wait_idle();
+    if (REDUZIDA) mostra_reduzida(FBP_24, 5, PSM_CT32, 0, 0, 320, 240); /* a prévia do tamanho */
+    else display(FBP_24, 5, PSM_CT32, 0, 0, 320, 240, 0);
 }
 
 /* A abertura (intro_ps2.c), antes do jogo: quadros 640 x 448 CT32 enviados
@@ -1012,6 +1466,9 @@ void GsGpu_IntroFrame(const uint32_t *abgr)
         if (started) {
             wait_idle();
             *GS_DISPFB1 = *GS_DISPFB2 = 0;
+            /* A tela AJUSTES (antes da abertura) já tinha ligado o renderizador:
+             * a abertura refez o GS, então o GsGpu_Init faz tudo de novo. */
+            active = 0;
         }
         started = 0;
         return;
@@ -1040,9 +1497,11 @@ void GsGpu_IntroFrame(const uint32_t *abgr)
 
 void GsGpu_Init(void)
 {
+    if (active) return; /* a tela AJUSTES já ligou */
     dma_channel_initialize(DMA_CHANNEL_GIF, NULL, 0);
     dma_channel_fast_waits(DMA_CHANNEL_GIF);
     graph_initialize(0, 320, 240, PSM_CT16, 0, 0);
+    mode_w = mode_h = mode_key = -1;
     gpu.clip_x2 = 1023;
     gpu.clip_y2 = 511;
     environment();

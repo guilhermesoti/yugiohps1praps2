@@ -1,14 +1,19 @@
 <!-- Texto para colar na página da release. O zip é anexado sozinho pela Action (.github/workflows/release.yml). -->
-Port **nativo** de Yu-Gi-Oh! Forbidden Memories (PS1, SLUS-01411) para PlayStation 2, agora **todo em português** e jogável como **ISO no OPL**, com capa.
+Port **nativo** de Yu-Gi-Oh! Forbidden Memories (PS1, SLUS-01411) para PlayStation 2. Esta versão traz a **tela AJUSTES** temática, **480p**, **16:9**, **centralização da imagem na TV** e **trapaças**.
 
-## Novidades da 0.2.0 beta
-- **Tradução completa para português (BR)**: falas, menus, as 721 descrições e os nomes das cartas como na dublagem brasileira (Dragão Branco de Olhos Azuis, Mago Negro, Caveira Invocada...). Ç, ã, é e companhia aparecem certinho.
-- **ISO para o OPL**: o `montar_iso.exe` junta o port com a imagem do **seu** disco e cria `RGPM_001.01.Yu-Gi-Oh FM PS2.iso`. Pela ISO os saves vão para o memory card (pasta `YFMPS2`).
-- **Capas para o OPL** (pasta `ART`): frente, verso, ícone, logo, fundo e telas, com arte original.
-- **Abertura da Retrogames** e tela **Apoie o projeto** com QR code do Pix.
-- Corrigido: caixa do FIELD cortada embaixo na TV, letras acentuadas aparecendo como quadrados, linhas nos rostos dos personagens no console, menus da loja desalinhados.
+## Novidades da 0.3.0 beta
+- **Tela AJUSTES** ao ligar (como no port de Super Mario World), com fundo feito das artes das cartas lidas do seu disco: vídeo, tela, idioma, posição e trapaças. Com tudo salvo, começa sozinha em 5 s.
+- **Vídeo 240p ou 480p** (o 480p para cabo componente ou adaptador HDMI). Um modo novo pergunta se a imagem apareceu e volta sozinho se não.
+- **16:9** de verdade: o cenário 3D mostra mais dos lados. No jogo, **L2+R2+X** troca 4:3 e 16:9.
+- **Posição na TV**: centraliza a imagem quando a TV corta ou desloca (comum pelo AV), sem perder nitidez. No jogo, **L2+R2 + setas**.
+- **Trapaças**: todas as cartas, todos os duelistas do Duelo Livre, 999999 StarChips, compras de graça, ver a mão do CPU, duelos com 9999 PV, StarChips e PV infinitos. E seus próprios códigos GameShark num `TRAPACAS.TXT`.
+- **criar-port.html**: abre no navegador do PC e monta a ISO ou a pasta do aplicativo a partir do `.bin/.cue` do seu disco, sem instalar nada.
+- **Ícone 3D do memory card** (moeda com o Olho de Rá) na pasta `YFMPS2`.
+- Corrigido: 480i que ocupava só a metade de cima da TV (o 480i saiu, ficam 240p e 480p); a lista "Build Deck: which deck?" do port de PC que saía da caixa na loja (montar o deck abre direto, como no PS1); saves e configuração indo para cartões diferentes com dois memory cards.
 
 ## Como jogar
+**Mais fácil:** abra o `criar-port.html` no navegador, escolha a imagem do seu disco e siga os passos.
+
 **Pelo ELF:** extraia a pasta `YFM` no pendrive, coloque a imagem do seu disco como `YFM.bin` e abra o `YFM_PS2.ELF` pelo OPL (como app) ou wLaunchELF.
 
 **Pela ISO:** coloque a imagem `.bin` do seu disco na pasta `YFM`, dê dois cliques no `montar_iso.exe`, ponha a ISO na pasta `CD` do pendrive e a pasta `ART` na raiz.
@@ -19,7 +24,7 @@ Port **nativo** de Yu-Gi-Oh! Forbidden Memories (PS1, SLUS-01411) para PlayStati
 - Vídeos ainda em ajuste fino no console.
 - O nome escrito no topo da arte da carta e as imagens com texto (menu principal, game over) continuam em inglês.
 
-Achou um bug? Abra uma issue com o `YFM-LOG.txt` (criado ao lado do ELF) e uma foto da tela.
+Achou um bug? Abra uma issue com o `YFM-LOG.txt` (ao lado do ELF; pela ISO, na pasta `YFMPS2` do memory card) e uma foto da tela.
 
 ## Apoie
 Projeto gratuito e sem fins lucrativos. Se quiser apoiar os próximos ports: Pix e Ko-fi na seção [Apoie o projeto](https://github.com/guilhermesoti/yugiohps1praps2#apoie-o-projeto).

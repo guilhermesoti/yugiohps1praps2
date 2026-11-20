@@ -32,7 +32,49 @@ pasta do port e a imagem `.bin` do seu disco ao lado, dois cliques criam
 pendrive (capas com o ID `RGPM_001.01`). Pela ISO os saves vão para o memory card (`YFMPS2`). A ISO tem o
 seu jogo dentro: não compartilhe. No Linux: `cc -O2 -o montar_iso tools/ps2/iso/montar_iso.c`.
 
-Para jogar em inglês, crie `YFM-SAVE/settings.txt` com a linha `language=0`.
+
+### Pelo criador (`release/criar-port.html`)
+
+Abra `release/criar-port.html` no navegador (Chrome, Edge ou Firefox), escolha o `.bin` e o `.cue`
+do seu disco e o formato. Tudo acontece no navegador, e o jogo não é enviado para lugar nenhum:
+
+- **ISO**: `RGPM_001.01.Yu-Gi-Oh FM PS2.iso` para a pasta `CD` do OPL (com a pasta `ART` do pacote,
+  as capas aparecem) ou para abrir no PCSX2. Os saves e as opções ficam no cartão de memória
+  (`YFMPS2`). A tradução vai dentro dela (`PTBR.TXT`).
+- **Aplicativo**: ZIP com `APPS/YFM_PS2/` (ELF, `YFM.bin`, `title.cfg` e a tradução em
+  `languages/pt-br.txt`) para extrair na raiz do pendrive. Aparece na aba Apps do OPL. No Chrome e
+  no Edge dá para gravar direto no pendrive.
+
+Para usar o ELF solto (sem o criador), copie também a pasta `languages/` do projeto para o lado
+dele: sem `languages/pt-br.txt` o jogo fica em inglês.
+
+O `build.sh` gera a página de novo a cada build, com o ELF novo embutido.
+
+### Tela AJUSTES (como no port de Super Mario World)
+
+Ao ligar, a tela **AJUSTES** escolhe:
+
+- **Vídeo**: 240p (cabo AV, em qualquer TV) ou 480p (cabo componente ou adaptador HDMI). Um modo novo
+  pergunta "A imagem apareceu?" e volta sozinho se ninguém apertar X em 10 s.
+- **Posição**: centraliza a imagem na TV (pelo AV muitas TVs mostram a imagem deslocada). Na linha
+  Posição, aperte X: aparecem setas nas bordas e as setas do controle movem a imagem, sem perder
+  nitidez. X termina. No jogo, **L2+R2 + as setas** fazem o mesmo vendo o jogo.
+- **Tela**: 4:3, ou 16:9 (mostra mais do cenário 3D dos lados; a imagem sai espremida para a TV
+  em modo 16:9 esticar. O círculo do painel fica redondo com a TV no modo certo).
+- **Idioma**: Português (a tradução do port, `languages/pt-br.txt`; é o padrão) ou English (o
+  original). Sem o arquivo da tradução, o jogo fica em inglês.
+- **Trapaças**: X abre a lista; X liga e desliga, Círculo volta. As prontas: todas as cartas (3 de
+  cada), todos os duelistas do Duelo Livre, 999999 StarChips (essas três mexem no save quando ele
+  carrega), compras de graça na tela de senha, ver a mão do CPU e duelos com 9999 PV. Mais as de
+  código GameShark: de fábrica vêm "StarChips infinitos" e "PV infinitos (você)"; para trocar,
+  ponha um `TRAPACAS.TXT` ao lado do ELF (ou na raiz da ISO), uma por linha:
+  `Nome = 801D07E0 423F + 801D07E2 000F` (tipos 80, 30, D0, D1, E0 e E1; endereços da RAM do PS1).
+  As ligadas ficam em `YFM-TRAPACAS.txt`.
+
+O fundo das telas é feito das artes das cartas, lidas do próprio disco (`WA_MRG.MRG`).
+
+Com os ajustes salvos, a tela começa sozinha em 5 s. No jogo, **L2 + R2 + X** troca 4:3 e 16:9. Tudo fica em `YFM-VISUAL.txt` (no pendrive, ao lado do
+ELF; na ISO, no cartão de memória, em `YFMPS2`).
 
 Controle: igual ao do PS1. Ao escolher o alvo de um ataque, **Quadrado** mostra a batalha 3D dos
 monstros e **X** faz o ataque rápido.
@@ -117,3 +159,8 @@ O código do port de PC e a camada PS2 (`src/ps2/`, `ps2/`, `build.sh`) estão s
 decompilado do jogo pertence aos autores do [memories-decomp](https://github.com/krystalgamer/memories-decomp).
 *Yu-Gi-Oh!* e *Forbidden Memories* são da Konami; este repositório não tem o jogo nem seus dados, e
 você precisa da sua própria cópia. Projeto sem ligação com a Konami.
+
+## Comparar com o jogo original
+
+`tools/compara/` tira a mesma tela do jogo de PS1 (Mednafen) e do port (PCSX2) e mostra as duas lado a lado,
+com uma imagem só das diferenças. Veja `tools/compara/LEIA-ME.md`.

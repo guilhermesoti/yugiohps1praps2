@@ -421,7 +421,8 @@ def main():
                  "-ldebug", "-leedebug", "-lgraph", "-ldma", "-lm"]
     objects = [obj(s) for s in game + native] + generated
     with open(f"{build}/objects.txt", "w") as handle:
-        handle.writelines(f"{o}\n" for o in objects)
+        # Entre aspas: o caminho do projeto pode ter espaços.
+        handle.writelines('"' + o.replace("\\", "\\\\").replace('"', '\\"') + '"\n' for o in objects)
     run([CC, "-T" + os.path.join(ROOT, "ps2/linkfile"), "-O2", "-o", output, f"@{build}/objects.txt",
          f"{gen}/guest_symbols.ld", "-Wl,-zmax-page-size=128", "-Wl,--gc-sections", f"-Wl,-Map,{build}/YFM_PS2.map",
          *libraries])
