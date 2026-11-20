@@ -159,6 +159,23 @@ static void seta(int x, int cy, int dir, uint32_t cor) {
   }
 }
 
+/* Seta para cima (dir < 0) ou para baixo, de ponta em (cx, y). */
+static void seta_v(int cx, int y, int dir, uint32_t cor) {
+  for (int i = 0; i < 5; i++) fill(cx - i, dir < 0 ? y + i : y - i, 2 * i + 1, 1, cor);
+}
+
+/* O modo de ajuste do tamanho: setas grandes no meio de cada borda, como no
+   ajuste de tela de um monitor. */
+static void setas_das_bordas(int frame) {
+  uint32_t cor = (frame / 15) % 2 ? DOURADO : BRANCO;
+  for (int k = 0; k < 2; k++) {
+    seta_v(W / 2, 2 + k * 5, -1, cor);
+    seta_v(W / 2, H - 3 - k * 5, 1, cor);
+    seta(2 + k * 5, H / 2, -1, cor);
+    seta(W - 6 - k * 5, H / 2, 1, cor);
+  }
+}
+
 /* O olho de Hórus pequeno, em dourado, dos dois lados do título. */
 static void olho(int x, int y) {
   fill(x, y, 10, 1, DOURADO);
@@ -196,8 +213,9 @@ static const char *valor(const Ajustes *a, int linha) {
   case AJUSTE_TELA: return a->tela ? "16:9" : "4:3";
   case AJUSTE_SUAVE: return kSuave[a->suave];
   case AJUSTE_TAMANHO: {
-    static char texto_tamanho[8];
-    snprintf(texto_tamanho, sizeof(texto_tamanho), "%d%%", AJUSTE_PORCENTO(a->tamanho));
+    static char texto_tamanho[24];
+    if (a->largura == 100 && a->altura == 100) snprintf(texto_tamanho, sizeof(texto_tamanho), "100%%");
+    else snprintf(texto_tamanho, sizeof(texto_tamanho), "%d%% x %d%%", a->largura, a->altura);
     return texto_tamanho;
   }
   default: return kIdioma[a->idioma];
@@ -270,9 +288,15 @@ static void painel(const Ajustes *a) {
     }
     break;
   case AJUSTE_TAMANHO:
-    texto(tx, l1, "Diminui a imagem na TV.", BRANCO, 1);
-    texto(tx, l2, "Ajuste até ver toda a moldura.", TEXTO, 1);
-    texto(tx, l3, "No jogo: L2+R2 e cima/baixo.", CINZA, 1);
+    if (a->ajustando) {
+      texto(tx, l1, "Cima/baixo: altura.", BRANCO, 1);
+      texto(tx, l2, "Esquerda/direita: largura.", BRANCO, 1);
+      texto(tx, l3, "X: pronto. Veja a moldura toda.", DOURADO, 1);
+    } else {
+      texto(tx, l1, "Para a TV não cortar as bordas.", BRANCO, 1);
+      texto(tx, l2, "Aperte X e use as setas.", TEXTO, 1);
+      texto(tx, l3, "No jogo: L2+R2 e as setas.", CINZA, 1);
+    }
     break;
   default:
     texto(tx, l1, "X ou START começa. Fica tudo salvo.", BRANCO, 1);
@@ -308,6 +332,7 @@ void ajustes_desenha(uint32_t *destino, const unsigned char *letras, const Ajust
     snprintf(linha, sizeof(linha), "%d", a->segundos % 100);
     texto(W - 24 - largura(linha, 1), 20 + OY, linha, CINZA, 1);
   }
+  if (a->ajustando) setas_das_bordas(frame);
 }
 
 /* ---- teste do modo novo ---- */

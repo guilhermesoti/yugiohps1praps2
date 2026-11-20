@@ -1154,7 +1154,8 @@ static int draw_overlay(int x, int y) { return draw_overlay_to(compose_page, x, 
  * cache de texturas em 13 slots. Com menu do port por cima, a imagem 1:1 é
  * montada antes nas páginas dos vídeos de 24 bits (128-147), que não tocam
  * junto com um menu. */
-static int escala = 100, saida_b;
+static int escala_h = 100, escala_v = 100, saida_b; /* largura e altura, % */
+#define REDUZIDA (escala_h < 100 || escala_v < 100)
 static void cache_limit(void);
 
 static int saida_pagina(void)
@@ -1165,11 +1166,11 @@ static int saida_pagina(void)
 }
 
 /* Desenha a área (sx, sy, sw x sh) da imagem em src_page/src_fbw/src_psm
- * reduzida para `escala`% numa imagem de saída, e a mostra. */
+ * reduzida (largura escala_h %, altura escala_v %) numa imagem de saída, e a mostra. */
 static void mostra_reduzida(int src_page, int src_fbw, int src_psm, int sx, int sy, int sw, int sh)
 {
     const int page = saida_pagina(), fbw = sw > 320 ? WIDE_FBW : 5;
-    int ow = (sw * escala / 100) & ~1, oh = (sh * escala / 100) & ~1;
+    int ow = (sw * escala_h / 100) & ~1, oh = (sh * escala_v / 100) & ~1;
     int ox = (sw - ow) / 2, oy = (sh - oh) / 2;
     int tw = src_fbw * 64 > 512 ? 10 : 9;
 #define XY_SAIDA(px, py) ((uint64_t)((((px) + OFFSET) << 4) & 0xFFFF) | ((uint64_t)((((py) + OFFSET) << 4) & 0xFFFF) << 16))
@@ -1201,18 +1202,20 @@ static void mostra_reduzida(int src_page, int src_fbw, int src_psm, int sx, int 
     display(page, fbw, PSM_CT16, 0, 0, sw, sh, 0);
 }
 
-void GsGpu_SetTamanho(int porcento)
+void GsGpu_SetTamanho(int largura, int altura)
 {
-    porcento = porcento < 80 ? 80 : porcento > 100 ? 100 : porcento;
-    if (porcento == escala) return;
+    largura = largura < 80 ? 80 : largura > 100 ? 100 : largura;
+    altura = altura < 80 ? 80 : altura > 100 ? 100 : altura;
+    if (largura == escala_h && altura == escala_v) return;
     if (active) {
         flush_pending();
         wait_idle();
     }
-    escala = porcento;
+    escala_h = largura, escala_v = altura;
     cache_limit();
 }
-int GsGpu_Tamanho(void) { return escala; }
+int GsGpu_Largura(void) { return escala_h; }
+int GsGpu_Altura(void) { return escala_v; }
 
 void GsGpu_Show(int x, int y, int w, int h, int rgb24)
 {
@@ -1220,7 +1223,7 @@ void GsGpu_Show(int x, int y, int w, int h, int rgb24)
     shown_24_now = rgb24;
     if (rgb24) return;
     flush_pending();
-    if (escala < 100 && h <= 256) {
+    if (REDUZIDA && h <= 256) {
         if (draw_overlay_to(FBP_24, x & 1023, y & 511)) {
             mostra_reduzida(FBP_24, 5, PSM_CT16, 0, 0, w, h);
             return;
@@ -1302,7 +1305,7 @@ void GsGpu_Present(const uint16_t *vram, int x, int y, int w, int h, int rgb24)
         upload(FBP_24 * 32, 5, PSM_CT24, 0, 0, 320, ch, picture24, (unsigned)(960 * ch));
         overlay_lost = 1;
         flush();
-        if (escala < 100 && h <= 256) mostra_reduzida(FBP_24, 5, PSM_CT24, 0, 0, cw, ch);
+        if (REDUZIDA && h <= 256) mostra_reduzida(FBP_24, 5, PSM_CT24, 0, 0, cw, ch);
         else display(FBP_24, 5, PSM_CT24, 0, 0, cw, ch, h > 256);
     } else {
         GsGpu_Show(x, y, w, h, 0); /* with the port's menus, redrawn at each VBlank */
@@ -1344,7 +1347,7 @@ void GsGpu_SetWide(int on)
 static void cache_limit(void)
 {
     int i;
-    cache_slots = !wide_on ? CACHE_SLOTS : escala < 100 ? 13 : 15;
+    cache_slots = !wide_on ? CACHE_SLOTS : REDUZIDA ? 13 : 15;
     for (i = cache_slots; i < CACHE_SLOTS; i++) slots[i].used = 0;
     if (last_found >= cache_slots) last_found = -1;
 }
@@ -1417,7 +1420,7 @@ void GsGpu_ShowPicture(uint32_t *rgb)
     }
     upload(FBP_24 * 32, 5, PSM_CT32, 0, 0, 320, 240, rgb, 320 * 240 * 4);
     wait_idle();
-    if (escala < 100) mostra_reduzida(FBP_24, 5, PSM_CT32, 0, 0, 320, 240); /* a prévia do tamanho */
+    if (REDUZIDA) mostra_reduzida(FBP_24, 5, PSM_CT32, 0, 0, 320, 240); /* a prévia do tamanho */
     else display(FBP_24, 5, PSM_CT32, 0, 0, 320, 240, 0);
 }
 

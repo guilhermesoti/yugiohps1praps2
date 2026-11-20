@@ -131,12 +131,14 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   em 20/11/2026 (pelo AV o 240p fica melhor); um `YFM-VISUAL.txt` antigo com 480i vira 240p. Tela e
   suavização e idioma. Modo novo pede confirmação. `YFM-VISUAL.txt`: quatro dígitos (suavização,
   16:9, vídeo, idioma: 0 português, 1 inglês).
-- **Tamanho na TV** (`GsGpu_SetTamanho`, 80–100%): contra o overscan da TV pelo AV. Abaixo de 100%,
+- **Tamanho na TV** (`GsGpu_SetTamanho(largura, altura)`, 80–100% cada, de 2 em 2): contra o overscan
+  da TV pelo AV, como o ajuste de tela de um monitor (AJUSTES: X na linha Tamanho e as setas; no jogo
+  L2+R2 + setas). Abaixo de 100%,
   `mostra_reduzida` desenha cada quadro mostrado (o do jogo, o largo do 16:9, o vídeo de 24 bits e a
   própria tela AJUSTES) como um sprite com textura bilinear, menor e centrado, numa de duas imagens
   de saída: em 4:3 as páginas de composição 472/492; em 16:9 472 e 376 (o cache cai para 13 slots).
   Com menu do port por cima, a imagem 1:1 é montada antes nas páginas dos vídeos (128). Em 100% o
-  caminho é o de antes. `YFM-VISUAL.txt` ganhou o 5º dígito (0 = 100%, cada número 3% menor).
+  caminho é o de antes. `YFM-VISUAL.txt` ganhou duas letras, largura e altura (`a` = 100%, `k` = 80%).
 - **Português** (`LANGUAGE_PT_BR` em `src/pc/text/language.c`): a tradução do port,
   `languages/pt-br.txt`, feita do texto espanhol do PAL (mesmos códigos e caixas; layout PAL). As
   letras com acento (Ã, Õ, Ç, Ê...) a fonte do port desenha da letra base com a marca (glyphs.c).

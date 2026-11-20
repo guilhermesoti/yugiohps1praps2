@@ -411,10 +411,10 @@ static void poll_pad(void)
 }
 
 /* ---- AJUSTES (ajustes.c, como no port de Super Mario World) ----
- * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): cinco dígitos, a
+ * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): quatro dígitos e duas letras, a
  * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9), o
  * vídeo (0 240p, 1 480p; o 2, 480i, saiu e vira 240p), o idioma (0 português, 1 inglês) e,
- * desde 20/11/2026, o tamanho na TV (0 = 100%, cada número 3% menor; ver ajustes.h). Com o vídeo salvo, a tela AJUSTES começa
+ * desde 20/11/2026, o tamanho na TV: largura e altura, uma letra cada ('a' = 100%, 'k' = 80%). Com o vídeo salvo, a tela AJUSTES começa
  * sozinha em 5 s. ---- */
 static int ajustes_salvos; /* o arquivo existia, com o vídeo */
 /* O idioma: 0 português (languages/pt-br.txt), 1 inglês (o original). */
@@ -493,8 +493,12 @@ static void load_visual(void)
         if (c >= '0' && c <= '2') GsGpu_SetVideo(c == '1' ? VIDEO_480P : VIDEO_240P), ajustes_salvos = 1;
         c = fgetc(file);
         if (c == '0' || c == '1') idioma = c - '0';
-        c = fgetc(file);
-        if (c >= '0' && c < '0' + AJUSTE_TAMANHOS) GsGpu_SetTamanho(AJUSTE_PORCENTO(c - '0'));
+        {
+            /* Largura e altura: uma letra cada, 'a' = 100%, 'k' = 80% (de 2 em 2). */
+            int lh = fgetc(file), lv = fgetc(file);
+            if (lh >= 'a' && lh <= 'k' && lv >= 'a' && lv <= 'k')
+                GsGpu_SetTamanho(100 - AJUSTE_TAM_PASSO * (lh - 'a'), 100 - AJUSTE_TAM_PASSO * (lv - 'a'));
+        }
         fclose(file);
     }
     printf("ps2: suavizacao %d, 16:9 %d, video %d\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Video());
@@ -510,7 +514,8 @@ static void save_visual(void)
         fputc('0' + GsGpu_Wide(), file);
         fputc('0' + GsGpu_Video(), file);
         fputc('0' + idioma, file);
-        fputc('0' + (100 - GsGpu_Tamanho()) / 3, file);
+        fputc('a' + (100 - GsGpu_Largura()) / AJUSTE_TAM_PASSO, file);
+        fputc('a' + (100 - GsGpu_Altura()) / AJUSTE_TAM_PASSO, file);
         fputc('\n', file);
         fclose(file);
     }
@@ -554,7 +559,7 @@ static void tela_ajustes(void)
 {
     static char situacao[64], aviso_texto[64];
     const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma,
-              salvo_tamanho = GsGpu_Tamanho();
+              salvo_largura = GsGpu_Largura(), salvo_altura = GsGpu_Altura();
     int contagem = ajustes_salvos;
     const char *aviso = NULL;
     aplica_idioma(); /* vê se a tradução está lá */
@@ -566,17 +571,27 @@ static void tela_ajustes(void)
     else snprintf(situacao, sizeof(situacao), "Saves: pendrive, ao lado do jogo");
     for (;;) {
         Ajustes a = {contagem ? AJUSTE_JOGAR : AJUSTE_VIDEO, GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(), idioma,
-                     sem_traducao, -1, aviso, situacao, (100 - GsGpu_Tamanho()) / 3};
+                     sem_traducao, -1, aviso, situacao, GsGpu_Largura(), GsGpu_Altura(), 0};
         uint16_t held = botoes();
         int frame, saindo = -1;
         GsGpu_SetVideo(VIDEO_240P);
         for (frame = 0;; ++frame) {
             uint16_t agora = botoes(), apertou = agora & ~held;
             held = agora;
-            if (saindo < 0 && apertou) {
+            if (saindo < 0 && apertou && a.ajustando) {
+                /* O modo de ajuste do tamanho: as setas mudam a imagem na hora. */
+                if (apertou & (PAD_UP | PAD_DOWN)) a.altura += (apertou & PAD_UP) ? AJUSTE_TAM_PASSO : -AJUSTE_TAM_PASSO;
+                if (apertou & (PAD_LEFT | PAD_RIGHT)) a.largura += (apertou & PAD_RIGHT) ? AJUSTE_TAM_PASSO : -AJUSTE_TAM_PASSO;
+                a.altura = a.altura < AJUSTE_TAM_MIN ? AJUSTE_TAM_MIN : a.altura > 100 ? 100 : a.altura;
+                a.largura = a.largura < AJUSTE_TAM_MIN ? AJUSTE_TAM_MIN : a.largura > 100 ? 100 : a.largura;
+                GsGpu_SetTamanho(a.largura, a.altura);
+                if (apertou & (PAD_CROSS | PAD_CIRCLE | PAD_START)) a.ajustando = 0;
+            } else if (saindo < 0 && apertou) {
                 int dir = (apertou & PAD_LEFT) ? -1 : (apertou & PAD_RIGHT) ? 1 : 0;
                 contagem = 0;
-                if (apertou & (PAD_CROSS | PAD_START)) {
+                if ((apertou & PAD_CROSS) && a.linha == AJUSTE_TAMANHO) {
+                    a.ajustando = 1;
+                } else if (apertou & (PAD_CROSS | PAD_START)) {
                     saindo = frame;
                 } else if (apertou & (PAD_UP | PAD_DOWN)) {
                     a.linha = (a.linha + ((apertou & PAD_UP) ? AJUSTE_LINHAS - 1 : 1)) % AJUSTE_LINHAS;
@@ -587,12 +602,7 @@ static void tela_ajustes(void)
                     if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
                     if (a.linha == AJUSTE_SUAVE) a.suave = (a.suave + 3 + dir) % 3;
                     if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;
-                    if (a.linha == AJUSTE_TAMANHO) {
-                        /* Muda na hora: a própria tela AJUSTES é a prévia. */
-                        a.tamanho += dir;
-                        a.tamanho = a.tamanho < 0 ? 0 : a.tamanho >= AJUSTE_TAMANHOS ? AJUSTE_TAMANHOS - 1 : a.tamanho;
-                        GsGpu_SetTamanho(AJUSTE_PORCENTO(a.tamanho));
-                    }
+                    if (a.linha == AJUSTE_TAMANHO) a.ajustando = 1; /* as setas dos lados já entram no ajuste */
                     a.aviso = NULL;
                 }
             }
@@ -619,11 +629,11 @@ static void tela_ajustes(void)
         }
     }
     if (!ajustes_salvos || GsGpu_Video() != salvo_video || GsGpu_Wide() != salvo_tela || GsGpu_Visual() != salvo_suave ||
-        idioma != salvo_idioma || GsGpu_Tamanho() != salvo_tamanho)
+        idioma != salvo_idioma || GsGpu_Largura() != salvo_largura || GsGpu_Altura() != salvo_altura)
         save_visual();
     aplica_idioma();
-    printf("ps2: ajustes: video %d, 16:9 %d, suavizacao %d, tamanho %d%%\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(),
-           GsGpu_Tamanho());
+    printf("ps2: ajustes: video %d, 16:9 %d, suavizacao %d, tamanho %d%% x %d%%\n", GsGpu_Video(), GsGpu_Wide(),
+           GsGpu_Visual(), GsGpu_Largura(), GsGpu_Altura());
     ajustes_carregando(quadro, msx, 0);
     mostra();
     free(quadro);
@@ -887,9 +897,10 @@ void Platform_Frame(unsigned frame)
     }
     {
         /* Atalhos de vídeo, como no port do Mario: L2 + R2 + X troca 4:3 e
-         * 16:9; L2 + R2 + Círculo troca a suavização; L2 + R2 + cima/baixo
-         * aumenta/diminui o tamanho na TV (de 3 em 3%, 85 a 100), vendo o
-         * próprio jogo. Ficam salvos. */
+         * 16:9; L2 + R2 + Círculo troca a suavização; L2 + R2 + as setas
+         * mudam o tamanho na TV, como o ajuste de tela de um monitor: cima e
+         * baixo a altura, direita e esquerda a largura (de 2 em 2%, 80 a
+         * 100), vendo o próprio jogo. Ficam salvos. */
         static uint16_t before;
         uint16_t now = pad_bits | live_bits, pressed = now & ~before;
         before = now;
@@ -897,13 +908,18 @@ void Platform_Frame(unsigned frame)
             int changed = 0;
             if (pressed & PAD_CROSS) GsGpu_SetWide(!GsGpu_Wide()), changed = 1;
             if (pressed & PAD_CIRCLE) GsGpu_SetVisual((GsGpu_Visual() + 1) % 3), changed = 1;
-            if (pressed & (PAD_UP | PAD_DOWN)) {
-                int t = (100 - GsGpu_Tamanho()) / 3 + ((pressed & PAD_UP) ? -1 : 1);
-                t = t < 0 ? 0 : t >= AJUSTE_TAMANHOS ? AJUSTE_TAMANHOS - 1 : t;
-                if (AJUSTE_PORCENTO(t) != GsGpu_Tamanho()) GsGpu_SetTamanho(AJUSTE_PORCENTO(t)), changed = 1;
+            if (pressed & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) {
+                int l = GsGpu_Largura(), al = GsGpu_Altura();
+                if (pressed & PAD_UP) al += AJUSTE_TAM_PASSO;
+                if (pressed & PAD_DOWN) al -= AJUSTE_TAM_PASSO;
+                if (pressed & PAD_RIGHT) l += AJUSTE_TAM_PASSO;
+                if (pressed & PAD_LEFT) l -= AJUSTE_TAM_PASSO;
+                GsGpu_SetTamanho(l, al); /* limita de 80 a 100 */
+                changed = 1;
             }
             if (changed) {
-                printf("ps2: suavizacao %d, 16:9 %d, tamanho %d%%\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Tamanho());
+                printf("ps2: suavizacao %d, 16:9 %d, tamanho %d%% x %d%%\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Largura(),
+                       GsGpu_Altura());
                 save_visual();
             }
         }
