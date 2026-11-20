@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Capas do port para o OPL (pasta ART do pendrive), arte original da
+"""(Desde 20/11/2026 o release/ART usa as artes da caixa original, escolhidas
+pelo autor: rodar este script substitui por estas de arte própria.)
+
+Capas do port para o OPL (pasta ART do pendrive), arte original da
 Retrogames: sol alado dourado, moldura e o título em texto. Nada da arte da
 caixa original (a capa da Konami tem dono).
 
