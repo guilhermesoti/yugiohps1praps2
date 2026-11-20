@@ -1,6 +1,10 @@
 <!-- Texto para colar na página da release. O zip é anexado sozinho pela Action (.github/workflows/release.yml). -->
 Port **nativo** de Yu-Gi-Oh! Forbidden Memories (PS1, SLUS-01411) para PlayStation 2. Esta versão traz a **tela AJUSTES** temática, **480p**, **16:9**, **centralização da imagem na TV** e **trapaças**.
 
+## Novidades da 0.3.1 beta
+- **Adaptador HDMI**: a tela AJUSTES agora aparece em 480i, que toda TV mostra (pelo AV e pelo HDMI). Antes ela era em 240p, que muitos adaptadores HDMI não passam: a tela ficava preta e não dava para escolher o 480p. Com o HDMI, aperte um botão antes dos 5 s, escolha **480p** em Vídeo e confirme. Conferido num PS2 de verdade.
+- Ícone do memory card: a versão antiga é apagada antes de gravar a nova, e o `YFM-LOG.txt` diz se a gravação deu certo.
+
 ## Novidades da 0.3.0 beta
 - **Tela AJUSTES** ao ligar (como no port de Super Mario World), com fundo feito das artes das cartas lidas do seu disco: vídeo, tela, idioma, posição e trapaças. Com tudo salvo, começa sozinha em 5 s.
 - **Vídeo 240p ou 480p** (o 480p para cabo componente ou adaptador HDMI). Um modo novo pergunta se a imagem apareceu e volta sozinho se não.
