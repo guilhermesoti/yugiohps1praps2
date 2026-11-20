@@ -413,7 +413,7 @@ static void poll_pad(void)
 /* ---- AJUSTES (ajustes.c, como no port de Super Mario World) ----
  * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): quatro dígitos, a
  * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9), o
- * vídeo (0 240p, 1 480p, 2 480i) e o idioma (0 português, 1 inglês). Com o vídeo salvo, a tela AJUSTES começa
+ * vídeo (0 240p, 1 480p; o 2, 480i, saiu e vira 240p) e o idioma (0 português, 1 inglês). Com o vídeo salvo, a tela AJUSTES começa
  * sozinha em 5 s. ---- */
 static int ajustes_salvos; /* o arquivo existia, com o vídeo */
 /* O idioma: 0 português (languages/pt-br.txt), 1 inglês (o original). */
@@ -488,7 +488,8 @@ static void load_visual(void)
         c = fgetc(file);
         if (c == '0' || c == '1') GsGpu_SetWide(c - '0');
         c = fgetc(file);
-        if (c >= '0' && c <= '2') GsGpu_SetVideo(c == '2' ? VIDEO_480I : VIDEO_240P), ajustes_salvos = 1;
+        /* 1 = 480p; 0 = 240p; 2 (o 480i das versões anteriores, que saiu) vira 240p. */
+        if (c >= '0' && c <= '2') GsGpu_SetVideo(c == '1' ? VIDEO_480P : VIDEO_240P), ajustes_salvos = 1;
         c = fgetc(file);
         if (c == '0' || c == '1') idioma = c - '0';
         fclose(file);
@@ -542,7 +543,7 @@ static int confirma_video(void)
     return 0;
 }
 
-/* AJUSTES: a tela aparece em 480i (toda TV mostra), e o modo escolhido
+/* AJUSTES: a tela aparece em 240p (toda TV mostra, pelo AV também), e o modo escolhido
  * vale para o jogo. Com tudo salvo, começa sozinha em 5 s, até apertarem
  * um botão. Um modo de vídeo novo pergunta se a imagem apareceu. */
 static void tela_ajustes(void)
@@ -563,7 +564,7 @@ static void tela_ajustes(void)
                      sem_traducao, -1, aviso, situacao};
         uint16_t held = botoes();
         int frame, saindo = -1;
-        GsGpu_SetVideo(VIDEO_480I);
+        GsGpu_SetVideo(VIDEO_240P);
         for (frame = 0;; ++frame) {
             uint16_t agora = botoes(), apertou = agora & ~held;
             held = agora;
@@ -575,9 +576,9 @@ static void tela_ajustes(void)
                 } else if (apertou & (PAD_UP | PAD_DOWN)) {
                     a.linha = (a.linha + ((apertou & PAD_UP) ? AJUSTE_LINHAS - 1 : 1)) % AJUSTE_LINHAS;
                 } else if (dir && a.linha != AJUSTE_JOGAR) {
-                    /* 240p e 480i. O 480p ficou de fora até ser conferido num
-                     * PS2: no PCSX2 a imagem sai com o dobro da altura. */
-                    if (a.linha == AJUSTE_VIDEO) a.video = a.video == VIDEO_480I ? VIDEO_240P : VIDEO_480I;
+                    /* 240p e 480p. O 480i saiu (20/11/2026): pelo AV o 240p
+                     * fica melhor; o 480p é para componente ou adaptador HDMI. */
+                    if (a.linha == AJUSTE_VIDEO) a.video = a.video == VIDEO_480P ? VIDEO_240P : VIDEO_480P;
                     if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
                     if (a.linha == AJUSTE_SUAVE) a.suave = (a.suave + 3 + dir) % 3;
                     if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;

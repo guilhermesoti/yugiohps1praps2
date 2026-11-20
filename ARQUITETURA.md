@@ -125,8 +125,10 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   recortadas.
 - **Tela AJUSTES** (`ajustes.c`, o visual e o fluxo do port de Super Mario World, `formato.c` de lá):
   antes do jogo, desenhada na CPU num quadro 320x240 de 32 bits e mostrada pelo GS
-  (`GsGpu_ShowPicture`, páginas 128–167) sempre em 480i. Vídeo 240p/480i (`GsGpu_SetVideo`; o
-  480p existe em `display()` mas ficou fora da tela: no PCSX2 sai com o dobro da altura), tela e
+  (`GsGpu_ShowPicture`, páginas 128–167) sempre em 240p. Vídeo 240p/480p (`GsGpu_SetVideo`). No
+  480p e no 480i o DISPLAY é escrito à mão em `screen_for` (MAGV 1, altura 2h): o libgraph mandava
+  só metade das linhas (no console o 480i ficava na metade de cima da TV). O 480i saiu da tela
+  em 20/11/2026 (pelo AV o 240p fica melhor); um `YFM-VISUAL.txt` antigo com 480i vira 240p. Tela e
   suavização e idioma. Modo novo pede confirmação. `YFM-VISUAL.txt`: quatro dígitos (suavização,
   16:9, vídeo, idioma: 0 português, 1 inglês).
 - **Português** (`LANGUAGE_PT_BR` em `src/pc/text/language.c`): a tradução do port,

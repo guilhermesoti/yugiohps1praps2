@@ -1071,7 +1071,19 @@ static void screen_for(int key, int w, int h)
          * acima também dobra. */
         int magh = 2560 / w;
         uint64_t display = (uint64_t)(652 + x) | ((uint64_t)(50 + 2 * y) << 12) | ((uint64_t)(magh - 1) << 23) |
-                           ((uint64_t)1 << 27) | ((uint64_t)(2560 - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
+                           ((uint64_t)1 << 27) | ((uint64_t)(magh * w - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
+        *GS_DISPLAY1 = display;
+        *GS_DISPLAY2 = display;
+    } else if (key == 1) {
+        /* 480p com o quadro de 240 linhas: a mesma conta. O libgraph calcula
+         * MAGV 2 (480 / 240) mas manda só h linhas de tela, que leem h / 2
+         * linhas do quadro: a metade de cima com o dobro da altura (era o que
+         * o PCSX2 mostrava). Altura na tela 2h, a partir da linha 35. A largura
+         * é a da imagem ampliada (magh * w), não a do modo inteiro (1440):
+         * senão o PCRTC lia pontos da VRAM além do quadro (lixo à direita). */
+        int magh = 1440 / w;
+        uint64_t display = (uint64_t)(232 + x) | ((uint64_t)35 << 12) | ((uint64_t)(magh - 1) << 23) |
+                           ((uint64_t)1 << 27) | ((uint64_t)(magh * w - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
         *GS_DISPLAY1 = display;
         *GS_DISPLAY2 = display;
     }

@@ -54,7 +54,7 @@ O `build.sh` gera a página de novo a cada build, com o ELF novo embutido.
 
 Ao ligar, a tela **AJUSTES** escolhe:
 
-- **Vídeo**: 240p (cabo AV em TV de tubo) ou 480i (cabo AV em TV de tela plana). Um modo novo
+- **Vídeo**: 240p (cabo AV, em qualquer TV) ou 480p (cabo componente ou adaptador HDMI). Um modo novo
   pergunta "A imagem apareceu?" e volta sozinho se ninguém apertar X em 10 s.
 - **Tela**: 4:3, ou 16:9 (mostra mais do cenário 3D dos lados; a imagem sai espremida para a TV
   em modo 16:9 esticar. O círculo do painel fica redondo com a TV no modo certo).

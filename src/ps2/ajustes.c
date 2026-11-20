@@ -176,7 +176,7 @@ static const char *const kRotulo[4] = {"Vídeo", "Tela", "Suavização", "Idioma
 static const char *const kIdioma[2] = {"Português", "English"};
 static const char *const kSuave[3] = {"Desligada", "Média", "Forte"};
 static const char *const kVideoTxt[3][2] = {
-    {"240p: cabo AV em TV de tubo.", "A imagem mais parecida com o PS1."},
+    {"240p: cabo AV, em qualquer TV.", "A imagem mais parecida com o PS1."},
     {"480p: cabo componente ou adaptador HDMI.", "Se a TV não mostrar, volta sozinho."},
     {"480i: cabo AV em TV de tela plana.", "Experimente se o 240p ficar ruim."}};
 static const char *const kTelaTxt[2] = {"4:3: TV de tubo ou em 4:3.", "16:9: mostra mais do duelo."};
