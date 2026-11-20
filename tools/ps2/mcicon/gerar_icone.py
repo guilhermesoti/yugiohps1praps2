@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""icon.sys e yfm.icn (o Enigma do Milênio em 3D, com o olho; antes uma moeda com o Olho de Rá) da pasta YFMPS2 do memory card (o navegador do PS2 mostra
+"""icon.sys e yfm.icn (o Enigma do Milênio em 3D, pirâmide de 4 faces com o olho; antes uma moeda com o Olho de Rá) da pasta YFMPS2 do memory card (o navegador do PS2 mostra
 título e ícone em vez de "dados corrompidos"). O ícone é um quadrado plano
 com a arte release/ART/RGPM_001.01_ICO.png, parado.
 
@@ -170,6 +170,49 @@ def icn_enigma():
     return img, verts
 
 
+def icn_piramide():
+    """O Enigma do Milênio como ele é: pirâmide de cabeça para baixo, com a
+    base quadrada em cima e quatro faces triangulares (o olho em todas)."""
+    img = enigma_texture()
+    W, top, tip = 1.5, -3.05, -0.15          # meio lado da base; y para cima é negativo
+    corners = [(-W, -W), (W, -W), (W, W), (-W, W)]   # (x, z), em volta
+    T = (0.0, tip, 0.0)
+    gold = (0.5, 0.18)
+    verts = []
+
+    def tri(P, Q, R, n, uvs):
+        # ordem dos vértices: a mesma da face da frente que o navegador já
+        # mostrou certa (o produto vetorial aponta para dentro)
+        a = [Q[i] - P[i] for i in range(3)]
+        b = [R[i] - P[i] for i in range(3)]
+        c = (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+        if c[0] * n[0] + c[1] * n[1] + c[2] * n[2] > 0:
+            Q, R, uvs = R, Q, (uvs[0], uvs[2], uvs[1])
+        for V, uv in zip((P, Q, R), uvs):
+            verts.append((V[0], V[1], V[2]) + tuple(n) + tuple(uv))
+
+    for i in range(4):
+        (x0, z0), (x1, z1) = corners[i], corners[(i + 1) % 4]
+        P, Q = (x0, top, z0), (x1, top, z1)
+        mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
+        # normal para fora: na direção do meio da aresta, um pouco para baixo
+        h = tip - top
+        n = (mx * h, -W, mz * h)
+        ln = sum(v * v for v in n) ** 0.5
+        n = tuple(v / ln for v in n)
+        # quem olha a face de fora vê a "direita" em (-nz, 0, nx), como na
+        # face da frente (normal -z, direita +x)
+        rx, rz = -n[2], n[0]
+        left, right = (P, Q) if (x1 - x0) * rx + (z1 - z0) * rz > 0 else (Q, P)
+        tri(left, right, T, n, ((0.01, 0.01), (0.99, 0.01), (0.5, 0.99)))
+    # a base (em cima), dourada lisa
+    A, B, C, D = [(x, top, z) for x, z in corners]
+    up = (0.0, -1.0, 0.0)
+    tri(A, B, C, up, (gold, gold, gold))
+    tri(A, C, D, up, (gold, gold, gold))
+    return img, verts
+
+
 def pack_icn(img, verts):
     fx = lambda v: int(round(v * 4096))
     data = bytearray()
@@ -194,7 +237,7 @@ def main():
     with open(os.path.join(OUT, "icon.sys"), "wb") as f:
         f.write(icon_sys("Yu-Gi-Oh! FM", "PS2 Retrogames", "yfm.icn"))
     with open(os.path.join(OUT, "yfm.icn"), "wb") as f:
-        f.write(pack_icn(*icn_enigma()))
+        f.write(pack_icn(*icn_piramide()))
     print("icone em", OUT)
 
 
