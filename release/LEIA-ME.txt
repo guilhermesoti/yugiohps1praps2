@@ -1,4 +1,4 @@
-Yu-Gi-Oh! Forbidden Memories - port nativo para PlayStation 2 (v0.2.0 beta)
+Yu-Gi-Oh! Forbidden Memories - port nativo para PlayStation 2 (v0.3.0 beta)
 https://github.com/guilhermesoti/yugiohps1praps2
 
 COMO JOGAR
@@ -11,6 +11,20 @@ COMO JOGAR
 5. O jogo esta em portugues (BR): o texto fica em languages/pt-br.txt, que tem de
    ficar junto do ELF. Para jogar em ingles, crie YFM-SAVE/settings.txt com a
    linha language=0 (ou apague a pasta languages).
+
+TELA AJUSTES (ao ligar)
+- Video: 240p (cabo AV) ou 480p (componente ou adaptador HDMI).
+- Tela: 4:3 ou 16:9.  Idioma: Portugues ou English.
+- Posicao: X e as setas centralizam a imagem na TV.
+  No jogo: L2+R2 + setas move a imagem; L2+R2+X troca 4:3/16:9.
+- Trapacas: X abre a lista (X liga/desliga, Circulo volta). Todas as cartas,
+  duelistas liberados, StarChips, compras de graca, ver a mao do CPU, 9999 PV,
+  StarChips e PV infinitos. Seus codigos GameShark: crie TRAPACAS.TXT ao lado
+  do ELF, uma por linha:  Nome = 801D07E0 423F + 801D07E2 000F
+
+CRIAR O PORT SEM PROGRAMAS (criar-port.html)
+Abra o criar-port.html no navegador do PC, escolha o .bin/.cue do SEU disco e
+ele gera a ISO ou a pasta do aplicativo, ja com o ELF e o portugues.
 
 CAPAS DO OPL
 Copie a pasta ART deste pacote para a raiz do pendrive (junto das pastas CD/DVD
