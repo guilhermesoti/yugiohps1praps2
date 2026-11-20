@@ -25,6 +25,11 @@ void GsGpu_SetWide(int on);
 void GsGpu_SetTamanho(int largura, int altura);
 int GsGpu_Largura(void);
 int GsGpu_Altura(void);
+/* Posição da imagem na TV: x em pontos (do quadro de 320), y em linhas, de
+ * -16 a 16. Vale no próximo quadro mostrado. */
+void GsGpu_SetPosicao(int x, int y);
+int GsGpu_PosicaoX(void);
+int GsGpu_PosicaoY(void);
 int GsGpu_Wide(void);
 int GsGpu_ReadShown(uint16_t *out, int *w, int *h);
 /* Modo de vídeo (ajustes.h: VIDEO_240P, VIDEO_480P, VIDEO_480I). */

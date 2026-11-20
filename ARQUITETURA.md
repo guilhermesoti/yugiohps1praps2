@@ -133,12 +133,14 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   16:9, vídeo, idioma: 0 português, 1 inglês).
 - **Tamanho na TV** (`GsGpu_SetTamanho(largura, altura)`, 80–100% cada, de 2 em 2): contra o overscan
   da TV pelo AV, como o ajuste de tela de um monitor (AJUSTES: X na linha Tamanho e as setas; no jogo
-  L2+R2 + setas). Abaixo de 100%,
+  L2+R2 + setas). Posição (`GsGpu_SetPosicao`, -16 a 16, Quadrado alterna): só o começo da área
+  mostrada no DISPLAY do PCRTC (`screen_for`), sem custo e sem perder nitidez. O quadro reduzido só
+  pinta de preto as bordas (apagar tudo antes dava faixas pretas correndo na TV). Abaixo de 100%,
   `mostra_reduzida` desenha cada quadro mostrado (o do jogo, o largo do 16:9, o vídeo de 24 bits e a
   própria tela AJUSTES) como um sprite com textura bilinear, menor e centrado, numa de duas imagens
   de saída: em 4:3 as páginas de composição 472/492; em 16:9 472 e 376 (o cache cai para 13 slots).
   Com menu do port por cima, a imagem 1:1 é montada antes nas páginas dos vídeos (128). Em 100% o
-  caminho é o de antes. `YFM-VISUAL.txt` ganhou duas letras, largura e altura (`a` = 100%, `k` = 80%).
+  caminho é o de antes. `YFM-VISUAL.txt` ganhou quatro letras: largura e altura (`a` = 100%, `k` = 80%), posição x e y (`A` = -16, `I` = 0, `Q` = 16).
 - **Português** (`LANGUAGE_PT_BR` em `src/pc/text/language.c`): a tradução do port,
   `languages/pt-br.txt`, feita do texto espanhol do PAL (mesmos códigos e caixas; layout PAL). As
   letras com acento (Ã, Õ, Ç, Ê...) a fonte do port desenha da letra base com a marca (glyphs.c).

@@ -14,6 +14,10 @@ enum { AJUSTE_VIDEO, AJUSTE_TELA, AJUSTE_SUAVE, AJUSTE_IDIOMA, AJUSTE_TAMANHO, A
  * em 2 (no arquivo, uma letra cada: 'a' = 100%, 'k' = 80%). */
 #define AJUSTE_TAM_MIN 80
 #define AJUSTE_TAM_PASSO 2
+/* Posição: de 2 em 2 pontos/linhas, de -16 a 16 (no arquivo, uma letra cada:
+ * 'A' = -16, 'I' = 0, 'Q' = 16). */
+#define AJUSTE_POS_PASSO 2
+#define AJUSTE_POS_MAX 16
 
 typedef struct {
     int linha;            /* AJUSTE_* marcada */
@@ -24,7 +28,9 @@ typedef struct {
     const char *aviso;    /* em laranja, por exemplo "A TV não mostrou o 480p" */
     const char *situacao; /* em cinza: onde ficam os saves */
     int largura, altura;  /* tamanho na TV, % */
-    int ajustando;        /* no modo de ajuste do tamanho (setas nas bordas) */
+    int ajustando;        /* no modo de ajuste (setas nas bordas) */
+    int movendo;          /* no ajuste: as setas movem a imagem (Quadrado alterna) */
+    int pos_x, pos_y;     /* posição na TV */
 } Ajustes;
 
 void ajustes_desenha(uint32_t *destino, const unsigned char *letras, const Ajustes *a, int frame);

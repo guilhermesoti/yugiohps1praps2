@@ -214,7 +214,8 @@ static const char *valor(const Ajustes *a, int linha) {
   case AJUSTE_SUAVE: return kSuave[a->suave];
   case AJUSTE_TAMANHO: {
     static char texto_tamanho[24];
-    if (a->largura == 100 && a->altura == 100) snprintf(texto_tamanho, sizeof(texto_tamanho), "100%%");
+    if (a->ajustando && a->movendo) snprintf(texto_tamanho, sizeof(texto_tamanho), "posição %+d, %+d", a->pos_x, a->pos_y);
+    else if (a->largura == 100 && a->altura == 100) snprintf(texto_tamanho, sizeof(texto_tamanho), "100%%");
     else snprintf(texto_tamanho, sizeof(texto_tamanho), "%d%% x %d%%", a->largura, a->altura);
     return texto_tamanho;
   }
@@ -288,14 +289,18 @@ static void painel(const Ajustes *a) {
     }
     break;
   case AJUSTE_TAMANHO:
-    if (a->ajustando) {
-      texto(tx, l1, "Cima/baixo: altura.", BRANCO, 1);
-      texto(tx, l2, "Esquerda/direita: largura.", BRANCO, 1);
+    if (a->ajustando && a->movendo) {
+      texto(tx, l1, "Setas: movem a imagem.", BRANCO, 1);
+      texto(tx, l2, "Quadrado: volta ao tamanho.", TEXTO, 1);
+      texto(tx, l3, "X: pronto. Veja a moldura toda.", DOURADO, 1);
+    } else if (a->ajustando) {
+      texto(tx, l1, "Setas: altura e largura.", BRANCO, 1);
+      texto(tx, l2, "Quadrado: mover a imagem.", TEXTO, 1);
       texto(tx, l3, "X: pronto. Veja a moldura toda.", DOURADO, 1);
     } else {
       texto(tx, l1, "Para a TV não cortar as bordas.", BRANCO, 1);
       texto(tx, l2, "Aperte X e use as setas.", TEXTO, 1);
-      texto(tx, l3, "No jogo: L2+R2 e as setas.", CINZA, 1);
+      texto(tx, l3, "No jogo: L2+R2 + setas/Quadrado.", CINZA, 1);
     }
     break;
   default:

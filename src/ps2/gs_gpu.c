@@ -1052,15 +1052,22 @@ int GsGpu_Video(void) { return video_mode; }
 
 /* A largura na tela: no 480p o PCRTC tem 1440 pontos por linha, e a imagem
  * (320 ou 426) é ampliada pelo inteiro que cabe e centrada. */
+/* Posição da imagem na TV (AJUSTES, como o ajuste de tela de um monitor):
+ * pos_x em pontos do quadro de 320 (8 VCK no NTSC, 4 no 480p), pos_y em
+ * linhas do quadro de 240. Só muda onde o PCRTC começa a mostrar: não custa
+ * nada e não perde nitidez. */
+static int pos_x, pos_y, pos_mudou;
+
 static void screen_for(int key, int w, int h)
 {
     int x = 0, y = 0;
+    pos_mudou = 0;
     if (key == 1) x = (1440 - (1440 / w) * w) / 2;
     /* O libgraph põe o NTSC na linha 26 com 224 linhas; o PS1 mostra 240:
      * sobe a imagem o que passa de 224 (senão a caixa do FIELD era cortada
      * embaixo na TV). */
     if ((key == 0 || key == 2) && h > 224) y = -((h - 224) / 2);
-    graph_set_screen(x, y, w, h);
+    graph_set_screen(x + (key == 1 ? 4 : 8) * pos_x, y + pos_y, w, h);
     if (key == 2) {
         /* 480i com o quadro de 240 linhas (FFMD campo): a TV tem 480 linhas,
          * então cada linha do quadro vale duas (MAGV 1) e a altura na tela é
@@ -1070,7 +1077,7 @@ static void screen_for(int key, int w, int h)
          * começa na linha 26 do campo, 50 em linhas de quadro; o ajuste y
          * acima também dobra. */
         int magh = 2560 / w;
-        uint64_t display = (uint64_t)(652 + x) | ((uint64_t)(50 + 2 * y) << 12) | ((uint64_t)(magh - 1) << 23) |
+        uint64_t display = (uint64_t)(652 + x + 8 * pos_x) | ((uint64_t)(50 + 2 * (y + pos_y)) << 12) | ((uint64_t)(magh - 1) << 23) |
                            ((uint64_t)1 << 27) | ((uint64_t)(magh * w - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
         *GS_DISPLAY1 = display;
         *GS_DISPLAY2 = display;
@@ -1082,7 +1089,7 @@ static void screen_for(int key, int w, int h)
          * é a da imagem ampliada (magh * w), não a do modo inteiro (1440):
          * senão o PCRTC lia pontos da VRAM além do quadro (lixo à direita). */
         int magh = 1440 / w;
-        uint64_t display = (uint64_t)(232 + x) | ((uint64_t)35 << 12) | ((uint64_t)(magh - 1) << 23) |
+        uint64_t display = (uint64_t)(232 + x + 4 * pos_x) | ((uint64_t)(35 + 2 * pos_y) << 12) | ((uint64_t)(magh - 1) << 23) |
                            ((uint64_t)1 << 27) | ((uint64_t)(magh * w - 1) << 32) | ((uint64_t)(2 * h - 1) << 44);
         *GS_DISPLAY1 = display;
         *GS_DISPLAY2 = display;
@@ -1110,9 +1117,9 @@ static void display(int fbp, int fbw, int psm, int x, int y, int w, int h, int i
         graph_set_output(1, 0, 1, 0, 1, 0xFF);
         mode_w = w, mode_h = h, mode_key = key;
         environment(); /* a mode change resets the GS's drawing registers */
-    } else if (w != mode_w) {
+    } else if (w != mode_w || pos_mudou) {
         /* Só a largura (4:3 <-> 16:9): a ampliação horizontal do PCRTC muda
-         * (320: MAGH 7; 426: MAGH 5), o modo de vídeo não. */
+         * (320: MAGH 7; 426: MAGH 5), o modo de vídeo não. Ou a posição. */
         screen_for(key, w, h);
         mode_w = w;
     }
@@ -1182,10 +1189,23 @@ static void mostra_reduzida(int src_page, int src_fbw, int src_psm, int sx, int 
     reg(R_FBA, 0);
     /* Um quadro de 24/32 bits vira 16 bits: com o pontilhado do GS. */
     reg(R_DTHE, src_psm != PSM_CT16 ? 1 : 0);
+    /* Só as bordas ficam pretas (nunca a imagem toda): se a saída for
+     * desenhada enquanto a TV ainda a lê, apagar tudo antes aparecia como
+     * faixas pretas correndo pela tela (console, 20/11/2026). */
     reg(R_PRIM, 6);
     reg(R_RGBAQ, rgbaq(0, 0, 0, 0x80));
-    reg(R_XYZ2, XY_SAIDA(0, 0));
-    reg(R_XYZ2, XY_SAIDA(sw, sh));
+    if (oy > 0) {
+        reg(R_XYZ2, XY_SAIDA(0, 0));
+        reg(R_XYZ2, XY_SAIDA(sw, oy));
+        reg(R_XYZ2, XY_SAIDA(0, oy + oh));
+        reg(R_XYZ2, XY_SAIDA(sw, sh));
+    }
+    if (ox > 0) {
+        reg(R_XYZ2, XY_SAIDA(0, oy));
+        reg(R_XYZ2, XY_SAIDA(ox, oy + oh));
+        reg(R_XYZ2, XY_SAIDA(ox + ow, oy));
+        reg(R_XYZ2, XY_SAIDA(sw, oy + oh));
+    }
     reg(R_TEX0, (uint64_t)(src_page * 32) | ((uint64_t)src_fbw << 14) | ((uint64_t)src_psm << 20) | ((uint64_t)tw << 26) |
                     (9ull << 30) | (1ull << 35)); /* TCC 0 (só a cor), TFX decal */
     reg(R_TEX1, (1ull << 5) | (1ull << 6));       /* bilinear */
@@ -1215,6 +1235,15 @@ void GsGpu_SetTamanho(int largura, int altura)
     cache_limit();
 }
 int GsGpu_Largura(void) { return escala_h; }
+
+void GsGpu_SetPosicao(int x, int y)
+{
+    x = x < -16 ? -16 : x > 16 ? 16 : x;
+    y = y < -16 ? -16 : y > 16 ? 16 : y;
+    if (x != pos_x || y != pos_y) pos_x = x, pos_y = y, pos_mudou = 1;
+}
+int GsGpu_PosicaoX(void) { return pos_x; }
+int GsGpu_PosicaoY(void) { return pos_y; }
 int GsGpu_Altura(void) { return escala_v; }
 
 void GsGpu_Show(int x, int y, int w, int h, int rgb24)
