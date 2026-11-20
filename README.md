@@ -63,6 +63,15 @@ Ao ligar, a tela **AJUSTES** escolhe:
   em modo 16:9 esticar. O círculo do painel fica redondo com a TV no modo certo).
 - **Idioma**: Português (a tradução do port, `languages/pt-br.txt`; é o padrão) ou English (o
   original). Sem o arquivo da tradução, o jogo fica em inglês.
+- **Trapaças**: X abre a lista; X liga e desliga, Círculo volta. As prontas: todas as cartas (3 de
+  cada), todos os duelistas do Duelo Livre, 999999 StarChips (essas três mexem no save quando ele
+  carrega), compras de graça na tela de senha, ver a mão do CPU e duelos com 9999 PV. Mais as de
+  código GameShark: de fábrica vêm "StarChips infinitos" e "PV infinitos (você)"; para trocar,
+  ponha um `TRAPACAS.TXT` ao lado do ELF (ou na raiz da ISO), uma por linha:
+  `Nome = 801D07E0 423F + 801D07E2 000F` (tipos 80, 30, D0, D1, E0 e E1; endereços da RAM do PS1).
+  As ligadas ficam em `YFM-TRAPACAS.txt`.
+
+O fundo das telas é feito das artes das cartas, lidas do próprio disco (`WA_MRG.MRG`).
 
 Com os ajustes salvos, a tela começa sozinha em 5 s. No jogo, **L2 + R2 + X** troca 4:3 e 16:9. Tudo fica em `YFM-VISUAL.txt` (no pendrive, ao lado do
 ELF; na ISO, no cartão de memória, em `YFMPS2`).

@@ -105,7 +105,67 @@ static float sorteio(void) {
   return (float)((semente >> 8) & 0xFFFF) / 65535.0f;
 }
 
+/* ---- fundo temático: um mosaico das artes das cartas, escurecido, com as
+ * fileiras correndo devagar (a de cima e a de baixo para a esquerda, a do
+ * meio para a direita), atrás da moldura dourada ---- */
+enum { ARTES_MAX = 12, ARTE_PASSO_X = ARTE_W + 8, ARTE_PASSO_Y = ARTE_H + 8 };
+static const uint8_t *arte_idx;
+static int artes;
+static uint32_t arte_cor[ARTES_MAX][256]; /* as paletas já escurecidas */
+
+void ajustes_artes(const uint8_t *indices, const uint16_t *paletas, int n) {
+  arte_idx = indices;
+  artes = indices && paletas ? (n > ARTES_MAX ? ARTES_MAX : n) : 0;
+  for (int k = 0; k < artes; k++)
+    for (int i = 0; i < 256; i++) {
+      uint16_t c = paletas[k * 256 + i];
+      int r = (c & 31) << 3, g = (c >> 5 & 31) << 3, b = (c >> 10 & 31) << 3;
+      /* 40% da cor, puxando para o azul-noite do resto da tela */
+      r = r * 40 / 100 + 4, g = g * 40 / 100 + 6, b = b * 40 / 100 + 22;
+      arte_cor[k][i] = (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+    }
+}
+
+static void mosaico(int frame) {
+  for (int y = 0; y < H; y++) {
+    uint32_t c = (uint32_t)(6 + y * 6 / H) << 16 | (uint32_t)(6 + y * 4 / H) << 8 | (uint32_t)(18 + y * 12 / H);
+    for (int x = 0; x < W; x++) px[y * W + x] = c;
+  }
+  const int linhas = (H + ARTE_PASSO_Y - 1) / ARTE_PASSO_Y + 1, topo = -(ARTE_PASSO_Y * linhas - H) / 2;
+  for (int l = 0; l < linhas; l++) {
+    int y0 = topo + l * ARTE_PASSO_Y + 4;
+    int anda = (frame / 3) % (ARTE_PASSO_X * artes);
+    int x0 = (l & 1) ? anda - ARTE_PASSO_X * artes : -anda;
+    for (int k = 0; x0 + k * ARTE_PASSO_X < W; k++) {
+      int x = x0 + k * ARTE_PASSO_X + 4, qual = (k + l * 3) % artes;
+      if (x + ARTE_W <= 0) continue;
+      const uint8_t *idx = arte_idx + (size_t)qual * ARTE_W * ARTE_H;
+      const uint32_t *pal = arte_cor[qual];
+      for (int j = 0; j < ARTE_H; j++) {
+        int yy = y0 + j;
+        if ((unsigned)yy >= H) continue;
+        for (int i = 0; i < ARTE_W; i++) {
+          int xx = x + i;
+          if ((unsigned)xx < W) px[yy * W + xx] = pal[idx[j * ARTE_W + i]];
+        }
+      }
+      contorno(x - 2, y0 - 2, ARTE_W + 4, ARTE_H + 4, 1, 0x4A3A16); /* moldura de carta, dourado escuro */
+    }
+  }
+}
+
+/* Com o mosaico, uma faixa escura atrás do texto solto, para ler. */
+static void faixa(int y, int h) {
+  if (artes) mistura(18, y, W - 36, h, 0x03050E, 210);
+}
+
 static void fundo(int frame) {
+  if (artes) {
+    mosaico(frame);
+    contorno(10, 8, W - 20, H - 16, 2, 0xC8962E);
+    contorno(15, 13, W - 30, H - 26, 1, 0x7A5A1C);
+    return;
+  }
   for (int y = 0; y < H; y++) {
     uint32_t c = (uint32_t)(10 + y * 14 / H) << 16 | (uint32_t)(12 + y * 6 / H) << 8 | (uint32_t)(40 + y * 30 / H);
     for (int x = 0; x < W; x++) px[y * W + x] = c;
@@ -189,7 +249,7 @@ static void olho(int x, int y) {
 
 /* ---- AJUSTES ---- */
 
-static const char *const kRotulo[AJUSTE_JOGAR] = {"Vídeo", "Tela", "Idioma", "Posição"};
+static const char *const kRotulo[AJUSTE_JOGAR] = {"Vídeo", "Tela", "Idioma", "Posição", "Trapaças"};
 static const char *const kIdioma[2] = {"Português", "English"};
 static const char *const kVideoTxt[3][2] = {
     {"240p: cabo AV, em qualquer TV.", "A imagem mais parecida com o PS1."},
@@ -198,13 +258,20 @@ static const char *const kVideoTxt[3][2] = {
 static const char *const kTelaTxt[2] = {"4:3: TV de tubo ou em 4:3.", "16:9: mostra mais do duelo."};
 
 
-enum { LX = 28, LW = W - 56, LINHA_Y = 42 + OY, LINHA_H = 16, LINHA_PASSO = 18, VALOR_X = 152 };
+/* Cinco linhas: 14 de altura a cada 15, para caber o JOGAR e o painel. */
+enum { LX = 28, LW = W - 56, LINHA_Y = 42 + OY, LINHA_H = 14, LINHA_PASSO = 15, VALOR_X = 152 };
 
 static const char *valor(const Ajustes *a, int linha) {
   static const char *const videos[] = {"240p", "480p", "480i"};
   switch (linha) {
   case AJUSTE_VIDEO: return videos[a->video];
   case AJUSTE_TELA: return a->tela ? "16:9" : "4:3";
+  case AJUSTE_TRAPACAS: {
+    static char texto_trapacas[24];
+    if (!a->trapacas) return "nenhuma";
+    snprintf(texto_trapacas, sizeof(texto_trapacas), a->trapacas == 1 ? "1 ligada" : "%d ligadas", a->trapacas);
+    return texto_trapacas;
+  }
   case AJUSTE_POSICAO: {
     static char texto_posicao[24];
     if (!a->pos_x && !a->pos_y) snprintf(texto_posicao, sizeof(texto_posicao), "centro");
@@ -220,9 +287,9 @@ static void linha_ajuste(const Ajustes *a, int linha, int frame) {
   bool marcada = a->linha == linha;
   fill(LX, y, LW, LINHA_H, CAIXA);
   contorno(LX, y, LW, LINHA_H, marcada ? 2 : 1, marcada ? DOURADO : BORDA);
-  texto(LX + 9, y + 4, kRotulo[linha], marcada ? DOURADO : AZUL_CLARO, 1);
+  texto(LX + 9, y + 3, kRotulo[linha], marcada ? DOURADO : AZUL_CLARO, 1);
   int fim = LX + LW - 8;
-  texto_em(VALOR_X, fim - VALOR_X, y + 4, valor(a, linha), marcada ? BRANCO : TEXTO);
+  texto_em(VALOR_X, fim - VALOR_X, y + 3, valor(a, linha), marcada ? BRANCO : TEXTO);
   uint32_t cor = marcada ? DOURADO : BORDA;
   int pulo = marcada && (frame / 15) % 2 ? 1 : 0;
   seta(VALOR_X + 2 - pulo, y + LINHA_H / 2, -1, cor);
@@ -234,7 +301,7 @@ static void botao_jogar(const Ajustes *a, int frame) {
   bool marcado = a->linha == AJUSTE_JOGAR;
   fill(x, y, w, LINHA_H, marcado ? 0x3A2A08 : CAIXA);
   contorno(x, y, w, LINHA_H, marcado ? 2 : 1, marcado ? DOURADO : BORDA);
-  texto_em(x, w, y + 4, "JOGAR", marcado ? DOURADO : AZUL_CLARO);
+  texto_em(x, w, y + 3, "JOGAR", marcado ? DOURADO : AZUL_CLARO);
   if (marcado && (frame / 20) % 2 == 0) seta(x - 9, y + LINHA_H / 2, 1, DOURADO), seta(x + w + 5, y + LINHA_H / 2, -1, DOURADO);
 }
 
@@ -275,6 +342,11 @@ static void painel(const Ajustes *a) {
       texto(tx, l3, "Vale para o jogo, não para esta tela.", CINZA, 1);
     }
     break;
+  case AJUSTE_TRAPACAS:
+    texto(tx, l1, "Cartas, StarChips, PV e códigos.", BRANCO, 1);
+    texto(tx, l2, "Aperte X para ver a lista.", TEXTO, 1);
+    texto(tx, l3, "Mudam o jogo e o save, se salvar.", CINZA, 1);
+    break;
   case AJUSTE_POSICAO:
     if (a->ajustando) {
       texto(tx, l1, "Setas: movem a imagem.", BRANCO, 1);
@@ -298,6 +370,8 @@ void ajustes_desenha(uint32_t *destino, const unsigned char *letras, const Ajust
   px = destino;
   fonte = letras;
   fundo(frame);
+  faixa(14 + OY, 24);
+  faixa(181 + OY, 35);
   texto_sombra(17 + OY, "AJUSTES", DOURADO, 2);
   olho(W / 2 - 66, 19 + OY);
   olho(W / 2 + 56, 19 + OY);
@@ -331,6 +405,7 @@ void ajustes_confirma(uint32_t *destino, const unsigned char *letras, int video,
   fonte = letras;
   fundo(frame);
   char linha[64];
+  faixa(40 + OY, 120);
   texto_sombra(46 + OY, "A IMAGEM APARECEU?", DOURADO, 2);
   snprintf(linha, sizeof(linha), "Aperte X para ficar com o %s.", videos[video]);
   texto_em(0, W, 80 + OY, linha, BRANCO);
@@ -348,10 +423,53 @@ void ajustes_carregando(uint32_t *destino, const unsigned char *letras, int fram
   px = destino;
   fonte = letras;
   fundo(frame);
+  faixa(58 + OY, 92);
+  faixa(190 + OY, 18);
   texto_sombra(64 + OY, "YU-GI-OH!", DOURADO, 2);
   texto_sombra(84 + OY, "FORBIDDEN MEMORIES", DOURADO, 2);
   fill(W / 2 - 100, 103 + OY, 200, 1, 0xC8962E);
   texto_em(0, W, 110 + OY, "Port nativo para PlayStation 2", TEXTO);
   texto_em(0, W, 138 + OY, "Carregando o jogo...", BRANCO);
   texto_em(0, W, 196 + OY, "Retrogames Patos de Minas", CINZA);
+}
+
+/* ---- a lista das trapaças ---- */
+enum { TR_Y = 42 + OY, TR_H = 12, TR_VISIVEIS = 10 };
+
+void ajustes_trapacas(uint32_t *destino, const unsigned char *letras, const Trapacas *t, int cursor, int codigos,
+                      int frame) {
+  px = destino;
+  fonte = letras;
+  fundo(frame);
+  faixa(14 + OY, 24);
+  texto_sombra(17 + OY, "TRAPAÇAS", DOURADO, 2);
+  olho(W / 2 - 66, 19 + OY);
+  olho(W / 2 + 56, 19 + OY);
+  fill(W / 2 - 80, 35 + OY, 160, 1, 0xC8962E);
+  fill(LX, TR_Y - 3, LW, TR_VISIVEIS * TR_H + 6, CAIXA);
+  contorno(LX, TR_Y - 3, LW, TR_VISIVEIS * TR_H + 6, 1, BORDA);
+  int topo = cursor - TR_VISIVEIS / 2;
+  if (topo > t->n - TR_VISIVEIS) topo = t->n - TR_VISIVEIS;
+  if (topo < 0) topo = 0;
+  for (int i = 0; i < TR_VISIVEIS && topo + i < t->n; i++) {
+    const Trapaca *tr = &t->t[topo + i];
+    int y = TR_Y + i * TR_H;
+    bool marcada = topo + i == cursor;
+    if (marcada) contorno(LX + 2, y - 1, LW - 4, TR_H, 1, DOURADO);
+    contorno(LX + 7, y + 1, 9, 9, 1, tr->ligada ? DOURADO : BORDA);
+    if (tr->ligada) fill(LX + 9, y + 3, 5, 5, DOURADO);
+    texto(LX + 22, y + 2, tr->nome, marcada ? BRANCO : tr->ligada ? DOURADO : TEXTO, 1);
+    /* As do TRAPACAS.TXT: um risquinho à direita, para separar das prontas. */
+    if (tr->codigos) fill(LX + LW - 10, y + 5, 4, 1, CINZA);
+  }
+  uint32_t cor = (frame / 15) % 2 ? DOURADO : BORDA;
+  if (topo > 0) seta_v(W / 2, TR_Y - 9, -1, cor);
+  if (topo + TR_VISIVEIS < t->n) seta_v(W / 2, TR_Y + TR_VISIVEIS * TR_H + 9, 1, cor);
+  faixa(181 + OY, 35);
+  texto_em(0, W, 184 + OY, "X: liga e desliga  -  Círculo: volta", BRANCO);
+  char linha[64];
+  if (codigos < 0) snprintf(linha, sizeof(linha), "Sem TRAPACAS.TXT: as de fábrica.");
+  else snprintf(linha, sizeof(linha), "Do TRAPACAS.TXT: %d código%s.", codigos, codigos == 1 ? "" : "s");
+  texto_em(0, W, 195 + OY, linha, CINZA);
+  texto_em(0, W, 206 + OY, "Valem no jogo; o save muda se salvar.", CINZA);
 }

@@ -39,6 +39,10 @@ extern int fileXioInit(void); /* newlib then goes through fileXio (iomanX device
 #include "pc/saves/deck_menu.h"
 #include "gs_gpu.h"
 #include "ajustes.h"
+#include "trapacas.h"
+#include "pc/debug/cheats.h"
+#include "pc/platform/settings.h"
+#include "pc/memory_map.h"
 #include <graph.h>
 
 extern int Memories_PcMain(int argc, char **argv);
@@ -559,6 +563,166 @@ static int confirma_video(void)
     return 0;
 }
 
+/* ---- O tema das telas antes do jogo: artes de cartas do disco do jogador ----
+ * As artes ficam no \DATA\WA_MRG.MRG, que começa no setor 10102 do
+ * Forbidden Memories (USA) (o único disco que o port aceita): a da carta n
+ * em 1478656 + (n - 1) * 14336, 102 x 96 pontos de 8 bits, e a paleta de
+ * 256 cores logo depois, em + 9792 (docs/asset-catalog.json). O .bin tem
+ * setores de 2352 bytes (MODE2/2352): os 2048 de dados começam no 24. */
+static const int tema_cartas[] = {1, 35, 82, 22, 38, 21, 58, 69}; /* Olhos Azuis, Mago Negro, Olhos
+                                                                    Vermelhos, Caveira, Gaia, Exódia,
+                                                                    Kuriboh, Dragão Milenar */
+#define TEMA_N ((int)(sizeof(tema_cartas) / sizeof(tema_cartas[0])))
+static uint8_t *tema_idx;
+static uint16_t *tema_pal;
+static const char *tema_disco; /* main(): o .bin achado */
+
+static int le_mrg(FILE *f, uint32_t pos, void *destino, size_t n)
+{
+    uint8_t *d = destino;
+    while (n) {
+        uint32_t setor = 10102 + pos / 2048, dentro = pos % 2048;
+        size_t parte = 2048 - dentro < n ? 2048 - dentro : n;
+        if (fseek(f, (long)setor * 2352 + 24 + (long)dentro, SEEK_SET) || fread(d, 1, parte, f) != parte) return 0;
+        d += parte, pos += (uint32_t)parte, n -= parte;
+    }
+    return 1;
+}
+
+static void tema_carrega(void)
+{
+    FILE *f;
+    int k, ok = 1;
+    if (!tema_disco || !(f = fopen(tema_disco, "rb"))) return;
+    tema_idx = malloc((size_t)TEMA_N * ARTE_W * ARTE_H);
+    tema_pal = malloc((size_t)TEMA_N * 256 * 2);
+    for (k = 0; ok && tema_idx && tema_pal && k < TEMA_N; k++) {
+        uint32_t pos = 1478656u + (uint32_t)(tema_cartas[k] - 1) * 14336u;
+        ok = le_mrg(f, pos, tema_idx + (size_t)k * ARTE_W * ARTE_H, (size_t)ARTE_W * ARTE_H) &&
+             le_mrg(f, pos + 9792, tema_pal + (size_t)k * 256, 512);
+    }
+    fclose(f);
+    if (ok && tema_idx && tema_pal) {
+        ajustes_artes(tema_idx, tema_pal, TEMA_N);
+        printf("ps2: tema: %d artes de cartas do disco\n", TEMA_N);
+    } else {
+        printf("ps2: tema: as artes não foram lidas (fundo de estrelas)\n");
+        free(tema_idx), free(tema_pal);
+        tema_idx = NULL, tema_pal = NULL;
+    }
+}
+
+static void tema_libera(void)
+{
+    ajustes_artes(NULL, NULL, 0);
+    free(tema_idx), free(tema_pal);
+    tema_idx = NULL, tema_pal = NULL;
+}
+
+/* ---- Trapaças (trapacas.h): as prontas e os códigos do TRAPACAS.TXT ----
+ * O TRAPACAS.TXT fica ao lado do ELF (pendrive), na raiz da ISO (a página
+ * criar-port o põe lá) ou em host:. As ligadas vão para o YFM-TRAPACAS.txt,
+ * junto do YFM-VISUAL.txt (no cartão de memória, pela ISO). */
+static Trapacas trapacas;
+static int trapacas_txt = -1; /* trapaças vindas do TRAPACAS.TXT; -1 sem o arquivo */
+
+static long le_arquivo(const char *path, char *buf, size_t max)
+{
+    FILE *f = fopen(path, "rb");
+    size_t n = 0, got;
+    if (!f) return -1;
+    while (n < max && (got = fread(buf + n, 1, max - n < 2048 ? max - n : 2048, f)) > 0) n += got;
+    fclose(f);
+    return (long)n;
+}
+
+static void trapacas_lig_path(char *path, size_t size)
+{
+    if (!strncmp(program_dir, "host", 4)) snprintf(path, size, "host:YFM-TRAPACAS.txt");
+    else snprintf(path, size, "%s/YFM-TRAPACAS.txt", program_dir);
+}
+
+static void trapacas_carrega(void)
+{
+    char path[320], *buf = malloc(TRAPACAS_BYTES + 1);
+    long n;
+    trapacas_inicia(&trapacas);
+    if (!buf) return;
+    if (from_disc) snprintf(path, sizeof(path), "cdrom0:\\TRAPACAS.TXT;1");
+    else if (!strncmp(program_dir, "host", 4)) snprintf(path, sizeof(path), "host:TRAPACAS.TXT");
+    else snprintf(path, sizeof(path), "%s/TRAPACAS.TXT", program_dir);
+    n = le_arquivo(path, buf, TRAPACAS_BYTES);
+    /* Arquivo maior que o buffer: a última linha pode ter vindo pela metade
+     * (meia trapaça); fica só até a última linha inteira. */
+    if (n == TRAPACAS_BYTES)
+        while (n > 0 && buf[n - 1] != '\n') --n;
+    if (n < 0) trapacas_le(&trapacas, trapacas_padrao, strlen(trapacas_padrao));
+    trapacas_txt = n < 0 ? -1 : trapacas_le(&trapacas, buf, (size_t)n);
+    trapacas_lig_path(path, sizeof(path));
+    n = le_arquivo(path, buf, TRAPACAS_BYTES);
+    if (n > 0) trapacas_liga_salvas(&trapacas, buf, (size_t)n);
+    free(buf);
+    printf("ps2: trapacas: %d na lista (%d do TRAPACAS.TXT), %d ligadas\n", trapacas.n, trapacas_txt,
+           trapacas_ligadas(&trapacas));
+}
+
+static void trapacas_salva(void)
+{
+    char path[320], texto[TRAPACA_MAX * (TRAPACA_NOME * 2 + 2) + 1];
+    size_t n = trapacas_texto_ligadas(&trapacas, texto, sizeof(texto));
+    FILE *f;
+    trapacas_lig_path(path, sizeof(path));
+    if ((f = fopen(path, "wb"))) {
+        fwrite(texto, 1, n, f);
+        fclose(f);
+    }
+}
+
+/* A cada quadro do jogo: as prontas que são opções do projeto base, as que
+ * mexem no save (uma vez, quando um jogo novo ou um save fica ativo) e os
+ * códigos GameShark. */
+static void trapacas_quadro(void)
+{
+    static int carregado_antes, pendente;
+    int carregado, v;
+    if (!trapacas.n) return;
+    v = trapacas.t[TRAPACA_COMPRAS].ligada;
+    if (Settings_Get(SET_CHEAT_FREE_SPENDING) != v) Settings_Set(SET_CHEAT_FREE_SPENDING, v);
+    v = trapacas.t[TRAPACA_MAO_CPU].ligada;
+    if (Settings_Get(SET_CHEAT_SHOW_HAND) != v) Settings_Set(SET_CHEAT_SHOW_HAND, v);
+    v = trapacas.t[TRAPACA_PV_9999].ligada ? 9999 : 8000;
+    if (Settings_Get(SET_CHEAT_LIFE_POINTS) != v) Settings_Set(SET_CHEAT_LIFE_POINTS, v);
+    carregado = Cheats_SaveLoaded();
+    if (carregado && !carregado_antes) pendente = 1;
+    carregado_antes = carregado;
+    if (pendente && carregado && !Cheats_ChestOnScreen()) {
+        /* O baú é copiado pelo BUILD DECK enquanto está aberto: espera fechar. */
+        if (trapacas.t[TRAPACA_CARTAS].ligada) Cheats_TopUpAllCards(3);
+        if (trapacas.t[TRAPACA_DUELISTAS].ligada) Cheats_UnlockAllFreeDuelists();
+        if (trapacas.t[TRAPACA_STARCHIPS].ligada) Cheats_SetStarchips(999999);
+        pendente = 0;
+    }
+    trapacas_aplica_codigos(&trapacas, (uint8_t *)(uintptr_t)MEMORIES_GUEST_RAM); /* só as ligadas */
+}
+
+/* A lista das trapaças (X na linha Trapaças): volta 1 se mudou alguma. */
+static int tela_trapacas(void)
+{
+    int cursor = 0, mudou = 0, frame;
+    uint16_t held = botoes();
+    for (frame = 0;; ++frame) {
+        uint16_t agora = botoes(), apertou = agora & ~held;
+        held = agora;
+        if (apertou & PAD_UP) cursor = (cursor + trapacas.n - 1) % trapacas.n;
+        if (apertou & PAD_DOWN) cursor = (cursor + 1) % trapacas.n;
+        if (apertou & PAD_CROSS) trapacas.t[cursor].ligada = !trapacas.t[cursor].ligada, mudou = 1;
+        if (apertou & (PAD_CIRCLE | PAD_START | PAD_TRIANGLE)) break;
+        ajustes_trapacas(quadro, msx, &trapacas, cursor, trapacas_txt, frame);
+        mostra();
+    }
+    return mudou;
+}
+
 /* AJUSTES: a tela aparece em 240p (toda TV mostra, pelo AV também), e o modo escolhido
  * vale para o jogo. Com tudo salvo, começa sozinha em 5 s, até apertarem
  * um botão. Um modo de vídeo novo pergunta se a imagem apareceu. */
@@ -568,11 +732,13 @@ static void tela_ajustes(void)
     const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma,
               salvo_px = GsGpu_PosicaoX(),
               salvo_py = GsGpu_PosicaoY();
-    int contagem = ajustes_salvos;
+    int contagem = ajustes_salvos, trapacas_mudou = 0;
     const char *aviso = NULL;
     aplica_idioma(); /* vê se a tradução está lá */
+    trapacas_carrega();
     if (!pad_ok) return; /* sem controle não há o que escolher */
     if (!(quadro = memalign(64, AJUSTES_W * AJUSTES_H * 4))) return;
+    tema_carrega();
     boot_screen = 0;     /* daqui em diante o GS é do port, não da tela de texto */
     GsGpu_Init();
     if (from_disc) snprintf(situacao, sizeof(situacao), mc_ok ? "Saves: Memory Card (YFMPS2)" : "Sem Memory Card: os saves não ficam.");
@@ -580,7 +746,7 @@ static void tela_ajustes(void)
     for (;;) {
         Ajustes a = {contagem ? AJUSTE_JOGAR : AJUSTE_VIDEO, GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(), idioma,
                      sem_traducao, -1, aviso, situacao, GsGpu_Largura(), GsGpu_Altura(), 0, 0,
-                     GsGpu_PosicaoX(), GsGpu_PosicaoY()};
+                     GsGpu_PosicaoX(), GsGpu_PosicaoY(), trapacas_ligadas(&trapacas)};
         uint16_t held = botoes();
         int frame, saindo = -1;
         GsGpu_SetVideo(VIDEO_240P);
@@ -602,6 +768,10 @@ static void tela_ajustes(void)
                 contagem = 0;
                 if ((apertou & PAD_CROSS) && a.linha == AJUSTE_POSICAO) {
                     a.ajustando = 1;
+                } else if ((apertou & PAD_CROSS) && a.linha == AJUSTE_TRAPACAS) {
+                    trapacas_mudou |= tela_trapacas();
+                    a.trapacas = trapacas_ligadas(&trapacas);
+                    held = botoes();
                 } else if (apertou & (PAD_CROSS | PAD_START)) {
                     saindo = frame;
                 } else if (apertou & (PAD_UP | PAD_DOWN)) {
@@ -642,6 +812,7 @@ static void tela_ajustes(void)
         idioma != salvo_idioma ||
         GsGpu_PosicaoX() != salvo_px || GsGpu_PosicaoY() != salvo_py)
         save_visual();
+    if (trapacas_mudou) trapacas_salva();
     aplica_idioma();
     printf("ps2: ajustes: video %d, 16:9 %d, posicao %d %d\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_PosicaoX(),
            GsGpu_PosicaoY());
@@ -649,6 +820,7 @@ static void tela_ajustes(void)
     mostra();
     free(quadro);
     quadro = NULL;
+    tema_libera();
 }
 
 static int test_slot_ok(unsigned char *state) { (void)state; return 1; }
@@ -825,6 +997,7 @@ void Platform_Frame(unsigned frame)
     step_live_input();
     pump_audio();
     Cheats_Frame();
+    trapacas_quadro();
     Cards_Frame();
     Duelists_Frame();
     Tower_Frame();
@@ -1052,6 +1225,7 @@ int main(int argc, char **argv)
             nanosleep(&wait, NULL);
         }
     }
+    tema_disco = disc;
     if (!disc) {
         char text[700];
         if (from_disc)

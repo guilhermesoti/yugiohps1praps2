@@ -140,6 +140,17 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   diminuir a altura ou embaça (bilinear) ou some com linhas (sem filtro). O código continua em
   `gs_gpu.c`, parado em 100%. `YFM-VISUAL.txt`: quatro dígitos + `aa` (o tamanho, sempre 100%) + a
   posição x e y (`A` = -16, `I` = 0, `Q` = 16).
+- **Fundo temático**: `tema_carrega()` (platform_ps2.c) lê do disco 8 artes de cartas do
+  `WA_MRG.MRG` (LBA 10102; carta n em 1478656 + (n-1)*14336: 102x96, 8 bits, CLUT do PS1 em +9792)
+  e `ajustes.c` (`mosaico`) desenha fileiras que rolam, escurecidas para o índigo; `faixa()`
+  escurece atrás do texto solto. As artes são liberadas antes do jogo (`tema_libera`).
+- **Trapaças** (`trapacas.c`/`.h`, teste em `tests/ps2/trapacas_teste.c`): as prontas usam
+  `pc/debug/cheats.c` do projeto base (as opções `SET_CHEAT_*` e, uma vez quando o save fica
+  ativo, `Cheats_TopUpAllCards`/`UnlockAllFreeDuelists`/`SetStarchips`); os códigos GameShark
+  (80/30/D0/D1/E0/E1) são escritos a cada quadro (`trapacas_quadro`, depois de `Cheats_Frame`) em
+  `MEMORIES_GUEST_RAM`, onde os globais do jogo estão nos endereços do PS1. Sem `TRAPACAS.TXT`
+  valem as de fábrica (`trapacas_padrao`). As ligadas ficam em `YFM-TRAPACAS.txt`, pelo nome
+  (nome repetido no TXT é recusado). Testado no PCSX2: StarChips 999999 e PV 9999 no jogo.
 - **Português** (`LANGUAGE_PT_BR` em `src/pc/text/language.c`): a tradução do port,
   `languages/pt-br.txt`, feita do texto espanhol do PAL (mesmos códigos e caixas; layout PAL). As
   letras com acento (Ã, Õ, Ç, Ê...) a fonte do port desenha da letra base com a marca (glyphs.c).
