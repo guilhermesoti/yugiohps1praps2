@@ -411,9 +411,10 @@ static void poll_pad(void)
 }
 
 /* ---- AJUSTES (ajustes.c, como no port de Super Mario World) ----
- * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): quatro dígitos, a
+ * YFM-VISUAL.txt ao lado do ELF (na ISO, no cartão): cinco dígitos, a
  * suavização (0 desligada, 1 média, 2 forte), a tela (0 4:3, 1 16:9), o
- * vídeo (0 240p, 1 480p; o 2, 480i, saiu e vira 240p) e o idioma (0 português, 1 inglês). Com o vídeo salvo, a tela AJUSTES começa
+ * vídeo (0 240p, 1 480p; o 2, 480i, saiu e vira 240p), o idioma (0 português, 1 inglês) e,
+ * desde 20/11/2026, o tamanho na TV (0 = 100%, cada número 3% menor; ver ajustes.h). Com o vídeo salvo, a tela AJUSTES começa
  * sozinha em 5 s. ---- */
 static int ajustes_salvos; /* o arquivo existia, com o vídeo */
 /* O idioma: 0 português (languages/pt-br.txt), 1 inglês (o original). */
@@ -492,6 +493,8 @@ static void load_visual(void)
         if (c >= '0' && c <= '2') GsGpu_SetVideo(c == '1' ? VIDEO_480P : VIDEO_240P), ajustes_salvos = 1;
         c = fgetc(file);
         if (c == '0' || c == '1') idioma = c - '0';
+        c = fgetc(file);
+        if (c >= '0' && c < '0' + AJUSTE_TAMANHOS) GsGpu_SetTamanho(AJUSTE_PORCENTO(c - '0'));
         fclose(file);
     }
     printf("ps2: suavizacao %d, 16:9 %d, video %d\n", GsGpu_Visual(), GsGpu_Wide(), GsGpu_Video());
@@ -507,6 +510,7 @@ static void save_visual(void)
         fputc('0' + GsGpu_Wide(), file);
         fputc('0' + GsGpu_Video(), file);
         fputc('0' + idioma, file);
+        fputc('0' + (100 - GsGpu_Tamanho()) / 3, file);
         fputc('\n', file);
         fclose(file);
     }
@@ -549,7 +553,8 @@ static int confirma_video(void)
 static void tela_ajustes(void)
 {
     static char situacao[64], aviso_texto[64];
-    const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma;
+    const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma,
+              salvo_tamanho = GsGpu_Tamanho();
     int contagem = ajustes_salvos;
     const char *aviso = NULL;
     aplica_idioma(); /* vê se a tradução está lá */
@@ -561,7 +566,7 @@ static void tela_ajustes(void)
     else snprintf(situacao, sizeof(situacao), "Saves: pendrive, ao lado do jogo");
     for (;;) {
         Ajustes a = {contagem ? AJUSTE_JOGAR : AJUSTE_VIDEO, GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(), idioma,
-                     sem_traducao, -1, aviso, situacao};
+                     sem_traducao, -1, aviso, situacao, (100 - GsGpu_Tamanho()) / 3};
         uint16_t held = botoes();
         int frame, saindo = -1;
         GsGpu_SetVideo(VIDEO_240P);
@@ -582,6 +587,12 @@ static void tela_ajustes(void)
                     if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
                     if (a.linha == AJUSTE_SUAVE) a.suave = (a.suave + 3 + dir) % 3;
                     if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;
+                    if (a.linha == AJUSTE_TAMANHO) {
+                        /* Muda na hora: a própria tela AJUSTES é a prévia. */
+                        a.tamanho += dir;
+                        a.tamanho = a.tamanho < 0 ? 0 : a.tamanho >= AJUSTE_TAMANHOS ? AJUSTE_TAMANHOS - 1 : a.tamanho;
+                        GsGpu_SetTamanho(AJUSTE_PORCENTO(a.tamanho));
+                    }
                     a.aviso = NULL;
                 }
             }
@@ -608,10 +619,11 @@ static void tela_ajustes(void)
         }
     }
     if (!ajustes_salvos || GsGpu_Video() != salvo_video || GsGpu_Wide() != salvo_tela || GsGpu_Visual() != salvo_suave ||
-        idioma != salvo_idioma)
+        idioma != salvo_idioma || GsGpu_Tamanho() != salvo_tamanho)
         save_visual();
     aplica_idioma();
-    printf("ps2: ajustes: video %d, 16:9 %d, suavizacao %d\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual());
+    printf("ps2: ajustes: video %d, 16:9 %d, suavizacao %d, tamanho %d%%\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_Visual(),
+           GsGpu_Tamanho());
     ajustes_carregando(quadro, msx, 0);
     mostra();
     free(quadro);

@@ -9,7 +9,10 @@
 
 /* Modos de vídeo, na ordem do port do Mario (o arquivo guarda o número). */
 enum { VIDEO_240P = 0, VIDEO_480P = 1, VIDEO_480I = 2 };
-enum { AJUSTE_VIDEO, AJUSTE_TELA, AJUSTE_SUAVE, AJUSTE_IDIOMA, AJUSTE_JOGAR, AJUSTE_LINHAS };
+enum { AJUSTE_VIDEO, AJUSTE_TELA, AJUSTE_SUAVE, AJUSTE_IDIOMA, AJUSTE_TAMANHO, AJUSTE_JOGAR, AJUSTE_LINHAS };
+/* Tamanho da imagem na TV: 0 = 100%, cada passo 3% menor (até 85%). */
+#define AJUSTE_TAMANHOS 6
+#define AJUSTE_PORCENTO(t) (100 - 3 * (t))
 
 typedef struct {
     int linha;            /* AJUSTE_* marcada */
@@ -19,6 +22,7 @@ typedef struct {
     int segundos;         /* contagem para começar sozinho; -1 sem contagem */
     const char *aviso;    /* em laranja, por exemplo "A TV não mostrou o 480p" */
     const char *situacao; /* em cinza: onde ficam os saves */
+    int tamanho;          /* 0..AJUSTE_TAMANHOS-1 (AJUSTE_PORCENTO) */
 } Ajustes;
 
 void ajustes_desenha(uint32_t *destino, const unsigned char *letras, const Ajustes *a, int frame);

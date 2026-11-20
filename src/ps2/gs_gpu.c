@@ -1128,20 +1128,91 @@ static int overlay_lost = 1; /* kept for the movie path, which still marks it */
 /* The buffer the game shows is copied aside and the menu's box written over
  * the copy, which is shown instead: the game's own buffers stay as it drew
  * them. Two copies alternate, so the one on screen is never written. */
-static int draw_overlay(int x, int y)
+static int draw_overlay_to(int page, int x, int y)
 {
     int changed = 0, bx, by, bw, bh;
     const uint16_t *box = Ps2_OverlayBox(&changed, &bx, &by, &bw, &bh);
     if (!box) return 0;
-    reg(R_BITBLTBUF, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24) | ((uint64_t)(compose_page * 32) << 32) |
+    reg(R_BITBLTBUF, 0 | ((uint64_t)VRAM_FBW << 16) | ((uint64_t)PSM_CT16 << 24) | ((uint64_t)(page * 32) << 32) |
                          (5ull << 48) | ((uint64_t)PSM_CT16 << 56));
     reg(R_TRXPOS, (uint64_t)(x & 2047) | ((uint64_t)(y & 2047) << 16));
     reg(R_TRXREG, 320ull | (240ull << 32));
     reg(R_TRXDIR, 2);
-    upload(compose_page * 32, 5, PSM_CT16, bx, by, bw, bh, box, (unsigned)(bw * bh * 2));
+    upload(page * 32, 5, PSM_CT16, bx, by, bw, bh, box, (unsigned)(bw * bh * 2));
     (void)changed;
     return 1;
 }
+static int draw_overlay(int x, int y) { return draw_overlay_to(compose_page, x, y); }
+
+/* ---- Tamanho da imagem (tela AJUSTES): a TV pelo AV corta as bordas
+ * (overscan); com o tamanho abaixo de 100% cada quadro mostrado é
+ * redesenhado menor, centrado, com borda preta, numa de duas imagens de
+ * saída (uma é mostrada enquanto a outra é desenhada). O PCRTC só amplia
+ * por inteiros, por isso o desenho com textura (bilinear) no próprio GS.
+ * Saída: em 4:3, as duas imagens de composição (páginas 472 e 492, FBW 5);
+ * em 16:9 (até 426 de largura, FBW 7, 28 páginas cada) 472 e 376, com o
+ * cache de texturas em 13 slots. Com menu do port por cima, a imagem 1:1 é
+ * montada antes nas páginas dos vídeos de 24 bits (128-147), que não tocam
+ * junto com um menu. */
+static int escala = 100, saida_b;
+static void cache_limit(void);
+
+static int saida_pagina(void)
+{
+    saida_b = !saida_b;
+    if (wide_on) return saida_b ? 376 : COMPOSE_PAGE;
+    return saida_b ? COMPOSE_PAGE + 20 : COMPOSE_PAGE;
+}
+
+/* Desenha a área (sx, sy, sw x sh) da imagem em src_page/src_fbw/src_psm
+ * reduzida para `escala`% numa imagem de saída, e a mostra. */
+static void mostra_reduzida(int src_page, int src_fbw, int src_psm, int sx, int sy, int sw, int sh)
+{
+    const int page = saida_pagina(), fbw = sw > 320 ? WIDE_FBW : 5;
+    int ow = (sw * escala / 100) & ~1, oh = (sh * escala / 100) & ~1;
+    int ox = (sw - ow) / 2, oy = (sh - oh) / 2;
+    int tw = src_fbw * 64 > 512 ? 10 : 9;
+#define XY_SAIDA(px, py) ((uint64_t)((((px) + OFFSET) << 4) & 0xFFFF) | ((uint64_t)((((py) + OFFSET) << 4) & 0xFFFF) << 16))
+    reg(R_TEXFLUSH, 0);
+    reg(R_FRAME, (uint64_t)page | ((uint64_t)fbw << 16) | ((uint64_t)PSM_CT16 << 24));
+    reg(R_XYOFFSET, ((uint64_t)OFFSET << 4) | ((uint64_t)(OFFSET << 4) << 32));
+    reg(R_SCISSOR, (uint64_t)(sw - 1) << 16 | ((uint64_t)(sh - 1) << 48));
+    reg(R_TEST, (1ull << 16) | (1ull << 17));
+    reg(R_FBA, 0);
+    /* Um quadro de 24/32 bits vira 16 bits: com o pontilhado do GS. */
+    reg(R_DTHE, src_psm != PSM_CT16 ? 1 : 0);
+    reg(R_PRIM, 6);
+    reg(R_RGBAQ, rgbaq(0, 0, 0, 0x80));
+    reg(R_XYZ2, XY_SAIDA(0, 0));
+    reg(R_XYZ2, XY_SAIDA(sw, sh));
+    reg(R_TEX0, (uint64_t)(src_page * 32) | ((uint64_t)src_fbw << 14) | ((uint64_t)src_psm << 20) | ((uint64_t)tw << 26) |
+                    (9ull << 30) | (1ull << 35)); /* TCC 0 (só a cor), TFX decal */
+    reg(R_TEX1, (1ull << 5) | (1ull << 6));       /* bilinear */
+    reg(R_CLAMP, 2 | (2 << 2) | ((uint64_t)sx << 4) | ((uint64_t)(sx + sw - 1) << 14) | ((uint64_t)sy << 24) |
+                     ((uint64_t)(sy + sh - 1) << 34));
+    reg(R_PRIM, 6 | (1 << 4) | (1 << 8)); /* sprite com textura, UV */
+    reg(R_UV, (uint64_t)((sx << 4) & 0x3FFF) | ((uint64_t)((sy << 4) & 0x3FFF) << 16));
+    reg(R_XYZ2, XY_SAIDA(ox, oy));
+    reg(R_UV, (uint64_t)(((sx + sw) << 4) & 0x3FFF) | ((uint64_t)(((sy + sh) << 4) & 0x3FFF) << 16));
+    reg(R_XYZ2, XY_SAIDA(ox + ow, oy + oh));
+#undef XY_SAIDA
+    environment(); /* devolve FRAME, XYOFFSET, recorte e TEX1 do jogo (e envia) */
+    wait_idle();
+    display(page, fbw, PSM_CT16, 0, 0, sw, sh, 0);
+}
+
+void GsGpu_SetTamanho(int porcento)
+{
+    porcento = porcento < 80 ? 80 : porcento > 100 ? 100 : porcento;
+    if (porcento == escala) return;
+    if (active) {
+        flush_pending();
+        wait_idle();
+    }
+    escala = porcento;
+    cache_limit();
+}
+int GsGpu_Tamanho(void) { return escala; }
 
 void GsGpu_Show(int x, int y, int w, int h, int rgb24)
 {
@@ -1149,6 +1220,30 @@ void GsGpu_Show(int x, int y, int w, int h, int rgb24)
     shown_24_now = rgb24;
     if (rgb24) return;
     flush_pending();
+    if (escala < 100 && h <= 256) {
+        if (draw_overlay_to(FBP_24, x & 1023, y & 511)) {
+            mostra_reduzida(FBP_24, 5, PSM_CT16, 0, 0, w, h);
+            return;
+        }
+        if (wide_on) {
+            int t;
+            for (t = 0; t < WIDE_TARGETS; t++) {
+                WideTarget *wt = &wides[t];
+                if (wt->used && wt->x1 == (x & 1023) && wt->y1 == (y & 511) && wt->x2 - wt->x1 + 1 == w &&
+                    wt->y2 - wt->y1 + 1 >= h) {
+                    if (!wt->drawn) {
+                        wide_rect(wt, 0, 0, wt->margin, h, 0);
+                        wide_rect(wt, w + wt->margin, 0, wt->margin, h, 0);
+                    }
+                    wt->drawn = 0;
+                    mostra_reduzida(wide_fbp(wt), WIDE_FBW, PSM_CT16, (w + 2 * wt->margin - WIDE_SHOW) / 2, 0, WIDE_SHOW, h);
+                    return;
+                }
+            }
+        }
+        mostra_reduzida(0, VRAM_FBW, PSM_CT16, x & 1023, y & 511, w, h);
+        return;
+    }
     if (draw_overlay(x & 1023, y & 511)) {
         wait_idle();
         display(compose_page, 5, PSM_CT16, 0, 0, w, h, h > 256);
@@ -1207,7 +1302,8 @@ void GsGpu_Present(const uint16_t *vram, int x, int y, int w, int h, int rgb24)
         upload(FBP_24 * 32, 5, PSM_CT24, 0, 0, 320, ch, picture24, (unsigned)(960 * ch));
         overlay_lost = 1;
         flush();
-        display(FBP_24, 5, PSM_CT24, 0, 0, cw, ch, h > 256);
+        if (escala < 100 && h <= 256) mostra_reduzida(FBP_24, 5, PSM_CT24, 0, 0, cw, ch);
+        else display(FBP_24, 5, PSM_CT24, 0, 0, cw, ch, h > 256);
     } else {
         GsGpu_Show(x, y, w, h, 0); /* with the port's menus, redrawn at each VBlank */
     }
@@ -1239,9 +1335,17 @@ void GsGpu_SetWide(int on)
     wait_idle();
     memset(wides, 0, sizeof(wides));
     wide_on = on;
-    /* A imagem larga usa as páginas dos 4 últimos slots do cache. */
-    cache_slots = on ? 15 : CACHE_SLOTS;
-    for (i = 15; i < CACHE_SLOTS; i++) slots[i].used = 0;
+    (void)i;
+    cache_limit();
+}
+
+/* A imagem larga usa as páginas dos 4 últimos slots do cache; com o tamanho
+ * reduzido em 16:9, mais 2 (páginas 376-407) para uma das saídas. */
+static void cache_limit(void)
+{
+    int i;
+    cache_slots = !wide_on ? CACHE_SLOTS : escala < 100 ? 13 : 15;
+    for (i = cache_slots; i < CACHE_SLOTS; i++) slots[i].used = 0;
     if (last_found >= cache_slots) last_found = -1;
 }
 int GsGpu_Wide(void) { return wide_on; }
@@ -1313,7 +1417,8 @@ void GsGpu_ShowPicture(uint32_t *rgb)
     }
     upload(FBP_24 * 32, 5, PSM_CT32, 0, 0, 320, 240, rgb, 320 * 240 * 4);
     wait_idle();
-    display(FBP_24, 5, PSM_CT32, 0, 0, 320, 240, 0);
+    if (escala < 100) mostra_reduzida(FBP_24, 5, PSM_CT32, 0, 0, 320, 240); /* a prévia do tamanho */
+    else display(FBP_24, 5, PSM_CT32, 0, 0, 320, 240, 0);
 }
 
 /* A abertura (intro_ps2.c), antes do jogo: quadros 640 x 448 CT32 enviados
