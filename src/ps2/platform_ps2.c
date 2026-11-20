@@ -484,9 +484,10 @@ static void load_visual(void)
     FILE *file;
     int c;
     visual_path(path, sizeof(path));
+    GsGpu_SetVisual(0);
     if ((file = fopen(path, "rb"))) {
         c = fgetc(file);
-        if (c >= '0' && c <= '2') GsGpu_SetVisual(c - '0');
+        (void)c; /* a suavização saiu (20/11/2026): sempre como no PS1 */
         c = fgetc(file);
         if (c == '0' || c == '1') GsGpu_SetWide(c - '0');
         c = fgetc(file);
@@ -622,7 +623,6 @@ static void tela_ajustes(void)
                      * fica melhor; o 480p é para componente ou adaptador HDMI. */
                     if (a.linha == AJUSTE_VIDEO) a.video = a.video == VIDEO_480P ? VIDEO_240P : VIDEO_480P;
                     if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
-                    if (a.linha == AJUSTE_SUAVE) a.suave = (a.suave + 3 + dir) % 3;
                     if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;
                     if (a.linha == AJUSTE_TAMANHO) a.ajustando = 1; /* as setas dos lados já entram no ajuste */
                     a.aviso = NULL;
@@ -637,7 +637,7 @@ static void tela_ajustes(void)
         contagem = 0;
         aviso = NULL;
         GsGpu_SetWide(a.tela);
-        GsGpu_SetVisual(a.suave);
+        GsGpu_SetVisual(0);
         GsGpu_SetVideo(a.video);
         idioma = a.idioma;
         /* O modo já confirmado nesta TV entra direto; um novo pergunta. */
@@ -930,7 +930,6 @@ void Platform_Frame(unsigned frame)
         if ((now & (PAD_L2 | PAD_R2)) == (PAD_L2 | PAD_R2) && (now & PAD_SELECT) == 0) {
             int changed = 0;
             if (pressed & PAD_CROSS) GsGpu_SetWide(!GsGpu_Wide()), changed = 1;
-            if (pressed & PAD_CIRCLE) GsGpu_SetVisual((GsGpu_Visual() + 1) % 3), changed = 1;
             static int mover; /* L2 + R2 + Quadrado: as setas movem a imagem */
             if (pressed & PAD_SQUARE) mover = !mover;
             if (mover && (pressed & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT))) {

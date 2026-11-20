@@ -63,7 +63,7 @@ static int compose_page = COMPOSE_PAGE;
 static int active;
 /* Melhorias visuais do port (GsGpu_SetVisual): 0 original, 1 sem o
  * pontilhado do PS1, 2 sem pontilhado + filtro bilinear nos polígonos 3D. */
-static int visual_mode = 2;
+static int visual_mode = 0; /* sempre 0 (como no PS1) desde 20/11/2026: a Suavização saiu da tela AJUSTES */
 static int tex1_now; /* o TEX1 já enviado: 0 nearest, 1 bilinear */
 int GsGpu_Trace;
 int GsGpu_FrameLog; /* frames to summarize: primitives, fills, offsets, clips */

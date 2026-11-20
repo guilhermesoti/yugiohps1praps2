@@ -131,6 +131,8 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   em 20/11/2026 (pelo AV o 240p fica melhor); um `YFM-VISUAL.txt` antigo com 480i vira 240p. Tela e
   suavização e idioma. Modo novo pede confirmação. `YFM-VISUAL.txt`: quatro dígitos (suavização,
   16:9, vídeo, idioma: 0 português, 1 inglês).
+- **Suavização**: saiu da tela AJUSTES e do atalho L2+R2+Círculo em 20/11/2026 (pedido do usuário);
+  `visual_mode` fica sempre 0 (como no PS1). O código dos modos 1 e 2 continua em `gs_gpu.c`.
 - **Tamanho na TV** (`GsGpu_SetTamanho(largura, altura)`, 80–100% cada, de 2 em 2): contra o overscan
   da TV pelo AV, como o ajuste de tela de um monitor (AJUSTES: X na linha Tamanho e as setas; no jogo
   L2+R2 + setas). Posição (`GsGpu_SetPosicao`, -16 a 16, Quadrado alterna): só o começo da área

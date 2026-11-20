@@ -9,7 +9,8 @@
 
 /* Modos de vídeo, na ordem do port do Mario (o arquivo guarda o número). */
 enum { VIDEO_240P = 0, VIDEO_480P = 1, VIDEO_480I = 2 };
-enum { AJUSTE_VIDEO, AJUSTE_TELA, AJUSTE_SUAVE, AJUSTE_IDIOMA, AJUSTE_TAMANHO, AJUSTE_JOGAR, AJUSTE_LINHAS };
+/* A Suavização saiu da tela em 20/11/2026 (pedido do usuário): o jogo fica como no PS1. */
+enum { AJUSTE_VIDEO, AJUSTE_TELA, AJUSTE_IDIOMA, AJUSTE_TAMANHO, AJUSTE_JOGAR, AJUSTE_LINHAS };
 /* Tamanho da imagem na TV, largura e altura separadas: de 100% a 80%, de 2
  * em 2 (no arquivo, uma letra cada: 'a' = 100%, 'k' = 80%). */
 #define AJUSTE_TAM_MIN 80

@@ -189,29 +189,22 @@ static void olho(int x, int y) {
 
 /* ---- AJUSTES ---- */
 
-static const char *const kRotulo[5] = {"Vídeo", "Tela", "Suavização", "Idioma", "Tamanho"};
+static const char *const kRotulo[AJUSTE_JOGAR] = {"Vídeo", "Tela", "Idioma", "Tamanho"};
 static const char *const kIdioma[2] = {"Português", "English"};
-static const char *const kSuave[3] = {"Desligada", "Média", "Forte"};
 static const char *const kVideoTxt[3][2] = {
     {"240p: cabo AV, em qualquer TV.", "A imagem mais parecida com o PS1."},
     {"480p: cabo componente ou adaptador HDMI.", "Se a TV não mostrar, volta sozinho."},
     {"480i: cabo AV em TV de tela plana.", "Experimente se o 240p ficar ruim."}};
 static const char *const kTelaTxt[2] = {"4:3: TV de tubo ou em 4:3.", "16:9: mostra mais do duelo."};
-static const char *const kSuaveTxt[3][2] = {
-    {"Igual ao PS1, com o pontilhado.", "Pixels nítidos, como no console."},
-    {"Sem o pontilhado do PS1.", "Cores limpas, sem granulado."},
-    {"Sem pontilhado e com o 3D suave.", "Monstros e campo sem serrilhado."}};
 
-/* Cinco linhas (com o Tamanho): 14 de altura a cada 15, para caber o JOGAR
-   e o painel de ajuda nas mesmas 224 linhas. */
-enum { LX = 28, LW = W - 56, LINHA_Y = 42 + OY, LINHA_H = 14, LINHA_PASSO = 15, VALOR_X = 152 };
+
+enum { LX = 28, LW = W - 56, LINHA_Y = 42 + OY, LINHA_H = 16, LINHA_PASSO = 18, VALOR_X = 152 };
 
 static const char *valor(const Ajustes *a, int linha) {
   static const char *const videos[] = {"240p", "480p", "480i"};
   switch (linha) {
   case AJUSTE_VIDEO: return videos[a->video];
   case AJUSTE_TELA: return a->tela ? "16:9" : "4:3";
-  case AJUSTE_SUAVE: return kSuave[a->suave];
   case AJUSTE_TAMANHO: {
     static char texto_tamanho[24];
     if (a->ajustando && a->movendo) snprintf(texto_tamanho, sizeof(texto_tamanho), "posição %+d, %+d", a->pos_x, a->pos_y);
@@ -228,9 +221,9 @@ static void linha_ajuste(const Ajustes *a, int linha, int frame) {
   bool marcada = a->linha == linha;
   fill(LX, y, LW, LINHA_H, CAIXA);
   contorno(LX, y, LW, LINHA_H, marcada ? 2 : 1, marcada ? DOURADO : BORDA);
-  texto(LX + 9, y + 3, kRotulo[linha], marcada ? DOURADO : AZUL_CLARO, 1);
+  texto(LX + 9, y + 4, kRotulo[linha], marcada ? DOURADO : AZUL_CLARO, 1);
   int fim = LX + LW - 8;
-  texto_em(VALOR_X, fim - VALOR_X, y + 3, valor(a, linha), marcada ? BRANCO : TEXTO);
+  texto_em(VALOR_X, fim - VALOR_X, y + 4, valor(a, linha), marcada ? BRANCO : TEXTO);
   uint32_t cor = marcada ? DOURADO : BORDA;
   int pulo = marcada && (frame / 15) % 2 ? 1 : 0;
   seta(VALOR_X + 2 - pulo, y + LINHA_H / 2, -1, cor);
@@ -238,11 +231,11 @@ static void linha_ajuste(const Ajustes *a, int linha, int frame) {
 }
 
 static void botao_jogar(const Ajustes *a, int frame) {
-  int w = 96, x = (W - w) / 2, y = LINHA_Y + 5 * LINHA_PASSO + 2;
+  int w = 96, x = (W - w) / 2, y = LINHA_Y + AJUSTE_JOGAR * LINHA_PASSO + 1;
   bool marcado = a->linha == AJUSTE_JOGAR;
   fill(x, y, w, LINHA_H, marcado ? 0x3A2A08 : CAIXA);
   contorno(x, y, w, LINHA_H, marcado ? 2 : 1, marcado ? DOURADO : BORDA);
-  texto_em(x, w, y + 3, "JOGAR", marcado ? DOURADO : AZUL_CLARO);
+  texto_em(x, w, y + 4, "JOGAR", marcado ? DOURADO : AZUL_CLARO);
   if (marcado && (frame / 20) % 2 == 0) seta(x - 9, y + LINHA_H / 2, 1, DOURADO), seta(x + w + 5, y + LINHA_H / 2, -1, DOURADO);
 }
 
@@ -272,11 +265,6 @@ static void painel(const Ajustes *a) {
     texto(x + 98, l3, "com a TV no modo certo.", TEXTO, 1);
     break;
   }
-  case AJUSTE_SUAVE:
-    texto(tx, l1, kSuaveTxt[a->suave][0], BRANCO, 1);
-    texto(tx, l2, kSuaveTxt[a->suave][1], TEXTO, 1);
-    texto(tx, l3, "Vale para o jogo, não para esta tela.", CINZA, 1);
-    break;
   case AJUSTE_IDIOMA:
     if (a->sem_traducao) {
       texto(tx, l1, "Só em inglês: falta a tradução.", BRANCO, 1);
@@ -305,8 +293,8 @@ static void painel(const Ajustes *a) {
     break;
   default:
     texto(tx, l1, "X ou START começa. Fica tudo salvo.", BRANCO, 1);
-    texto(tx, l2, "No jogo, L2+R2+X troca a tela e", TEXTO, 1);
-    texto(tx, l3, "L2+R2+Círculo troca a suavização.", TEXTO, 1);
+    texto(tx, l2, "No jogo, L2+R2+X troca a tela;", TEXTO, 1);
+    texto(tx, l3, "L2+R2 e as setas: o tamanho.", TEXTO, 1);
     break;
   }
 }

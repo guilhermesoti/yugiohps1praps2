@@ -63,13 +63,10 @@ Ao ligar, a tela **AJUSTES** escolhe:
   os lados, sem perder nitidez). No jogo, **L2+R2 + as setas** (e L2+R2+Quadrado) fazem o mesmo vendo o jogo.
 - **Tela**: 4:3, ou 16:9 (mostra mais do cenário 3D dos lados; a imagem sai espremida para a TV
   em modo 16:9 esticar. O círculo do painel fica redondo com a TV no modo certo).
-- **Suavização**: Desligada (como no PS1), Média (sem o pontilhado) ou Forte (sem pontilhado e
-  com o 3D suavizado; é o padrão).
 - **Idioma**: Português (a tradução do port, `languages/pt-br.txt`; é o padrão) ou English (o
   original). Sem o arquivo da tradução, o jogo fica em inglês.
 
-Com os ajustes salvos, a tela começa sozinha em 5 s. No jogo, **L2 + R2 + X** troca 4:3 e 16:9 e
-**L2 + R2 + Círculo** troca a suavização. Tudo fica em `YFM-VISUAL.txt` (no pendrive, ao lado do
+Com os ajustes salvos, a tela começa sozinha em 5 s. No jogo, **L2 + R2 + X** troca 4:3 e 16:9. Tudo fica em `YFM-VISUAL.txt` (no pendrive, ao lado do
 ELF; na ISO, no cartão de memória, em `YFMPS2`).
 
 Controle: igual ao do PS1. Ao escolher o alvo de um ataque, **Quadrado** mostra a batalha 3D dos
