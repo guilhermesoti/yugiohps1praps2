@@ -32,8 +32,8 @@ disco e o formato. Tudo acontece no navegador, e o jogo não é enviado para lug
   `languages/pt-br.txt`) para extrair na raiz do pendrive. Aparece na aba Apps do OPL. No Chrome e
   no Edge dá para gravar direto no pendrive.
 
-A página não fica no código do repositório (tem uns 7 MB, com o ELF dentro): ela vem no pacote da
-release, e o `build.sh` gera uma nova em `release/criar-port.html` a cada build.
+A página também está solta na página da release, para baixar só ela. Ela não fica no código do
+repositório (tem uns 7 MB, com o ELF dentro); o o `build.sh` gera uma nova em `release/criar-port.html` a cada build.
 
 ### Pelo ELF (pendrive)
 
