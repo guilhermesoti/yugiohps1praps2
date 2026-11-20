@@ -133,16 +133,13 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   16:9, vídeo, idioma: 0 português, 1 inglês).
 - **Suavização**: saiu da tela AJUSTES e do atalho L2+R2+Círculo em 20/11/2026 (pedido do usuário);
   `visual_mode` fica sempre 0 (como no PS1). O código dos modos 1 e 2 continua em `gs_gpu.c`.
-- **Tamanho na TV** (`GsGpu_SetTamanho(largura, altura)`, 80–100% cada, de 2 em 2): contra o overscan
-  da TV pelo AV, como o ajuste de tela de um monitor (AJUSTES: X na linha Tamanho e as setas; no jogo
-  L2+R2 + setas). Posição (`GsGpu_SetPosicao`, -16 a 16, Quadrado alterna): só o começo da área
-  mostrada no DISPLAY do PCRTC (`screen_for`), sem custo e sem perder nitidez. O quadro reduzido só
-  pinta de preto as bordas (apagar tudo antes dava faixas pretas correndo na TV). Abaixo de 100%,
-  `mostra_reduzida` desenha cada quadro mostrado (o do jogo, o largo do 16:9, o vídeo de 24 bits e a
-  própria tela AJUSTES) como um sprite com textura sem filtro (o bilinear borrava no console), menor e centrado, numa de duas imagens
-  de saída: em 4:3 as páginas de composição 472/492; em 16:9 472 e 376 (o cache cai para 13 slots).
-  Com menu do port por cima, a imagem 1:1 é montada antes nas páginas dos vídeos (128). Em 100% o
-  caminho é o de antes. `YFM-VISUAL.txt` ganhou quatro letras: largura e altura (`a` = 100%, `k` = 80%), posição x e y (`A` = -16, `I` = 0, `Q` = 16).
+- **Posição na TV** (`GsGpu_SetPosicao`, -16 a 16 pontos/linhas, de 2 em 2): só o começo da área
+  mostrada no DISPLAY do PCRTC (`screen_for`), sem custo e sem perder nitidez. Tela AJUSTES: X na
+  linha Posição e as setas; no jogo, L2+R2 + setas. O ajuste de **tamanho** (altura/largura,
+  `GsGpu_SetTamanho`/`mostra_reduzida`) existiu em 20/11/2026 e saiu da tela no mesmo dia: em 240p
+  diminuir a altura ou embaça (bilinear) ou some com linhas (sem filtro). O código continua em
+  `gs_gpu.c`, parado em 100%. `YFM-VISUAL.txt`: quatro dígitos + `aa` (o tamanho, sempre 100%) + a
+  posição x e y (`A` = -16, `I` = 0, `Q` = 16).
 - **Português** (`LANGUAGE_PT_BR` em `src/pc/text/language.c`): a tradução do port,
   `languages/pt-br.txt`, feita do texto espanhol do PAL (mesmos códigos e caixas; layout PAL). As
   letras com acento (Ã, Õ, Ç, Ê...) a fonte do port desenha da letra base com a marca (glyphs.c).

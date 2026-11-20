@@ -499,8 +499,7 @@ static void load_visual(void)
             /* Largura e altura: uma letra cada, 'a' = 100%, 'k' = 80% (de 2 em 2). */
             int lh = fgetc(file), lv = fgetc(file);
             int px, py;
-            if (lh >= 'a' && lh <= 'k' && lv >= 'a' && lv <= 'k')
-                GsGpu_SetTamanho(100 - AJUSTE_TAM_PASSO * (lh - 'a'), 100 - AJUSTE_TAM_PASSO * (lv - 'a'));
+            (void)lh, (void)lv; /* o tamanho saiu (20/11/2026): sempre 100% */
             /* Posição: uma letra cada, 'A' = -16, 'I' = 0, 'Q' = 16 (de 2 em 2). */
             px = fgetc(file), py = fgetc(file);
             if (px >= 'A' && px <= 'Q' && py >= 'A' && py <= 'Q')
@@ -521,8 +520,7 @@ static void save_visual(void)
         fputc('0' + GsGpu_Wide(), file);
         fputc('0' + GsGpu_Video(), file);
         fputc('0' + idioma, file);
-        fputc('a' + (100 - GsGpu_Largura()) / AJUSTE_TAM_PASSO, file);
-        fputc('a' + (100 - GsGpu_Altura()) / AJUSTE_TAM_PASSO, file);
+        fputs("aa", file); /* o tamanho (saiu): 100% x 100% */
         fputc('I' + GsGpu_PosicaoX() / AJUSTE_POS_PASSO, file);
         fputc('I' + GsGpu_PosicaoY() / AJUSTE_POS_PASSO, file);
         fputc('\n', file);
@@ -568,7 +566,7 @@ static void tela_ajustes(void)
 {
     static char situacao[64], aviso_texto[64];
     const int salvo_video = GsGpu_Video(), salvo_tela = GsGpu_Wide(), salvo_suave = GsGpu_Visual(), salvo_idioma = idioma,
-              salvo_largura = GsGpu_Largura(), salvo_altura = GsGpu_Altura(), salvo_px = GsGpu_PosicaoX(),
+              salvo_px = GsGpu_PosicaoX(),
               salvo_py = GsGpu_PosicaoY();
     int contagem = ajustes_salvos;
     const char *aviso = NULL;
@@ -590,29 +588,19 @@ static void tela_ajustes(void)
             uint16_t agora = botoes(), apertou = agora & ~held;
             held = agora;
             if (saindo < 0 && apertou && a.ajustando) {
-                /* O modo de ajuste: as setas mudam o tamanho ou (Quadrado) a
-                 * posição da imagem, na hora. */
-                if (apertou & PAD_SQUARE) a.movendo = !a.movendo;
-                if (a.movendo) {
-                    if (apertou & PAD_UP) a.pos_y -= AJUSTE_POS_PASSO;
-                    if (apertou & PAD_DOWN) a.pos_y += AJUSTE_POS_PASSO;
-                    if (apertou & PAD_LEFT) a.pos_x -= AJUSTE_POS_PASSO;
-                    if (apertou & PAD_RIGHT) a.pos_x += AJUSTE_POS_PASSO;
-                    a.pos_x = a.pos_x < -AJUSTE_POS_MAX ? -AJUSTE_POS_MAX : a.pos_x > AJUSTE_POS_MAX ? AJUSTE_POS_MAX : a.pos_x;
-                    a.pos_y = a.pos_y < -AJUSTE_POS_MAX ? -AJUSTE_POS_MAX : a.pos_y > AJUSTE_POS_MAX ? AJUSTE_POS_MAX : a.pos_y;
-                    GsGpu_SetPosicao(a.pos_x, a.pos_y);
-                } else {
-                    if (apertou & (PAD_UP | PAD_DOWN)) a.altura += (apertou & PAD_UP) ? AJUSTE_TAM_PASSO : -AJUSTE_TAM_PASSO;
-                    if (apertou & (PAD_LEFT | PAD_RIGHT)) a.largura += (apertou & PAD_RIGHT) ? AJUSTE_TAM_PASSO : -AJUSTE_TAM_PASSO;
-                    a.altura = a.altura < AJUSTE_TAM_MIN ? AJUSTE_TAM_MIN : a.altura > 100 ? 100 : a.altura;
-                    a.largura = a.largura < AJUSTE_TAM_MIN ? AJUSTE_TAM_MIN : a.largura > 100 ? 100 : a.largura;
-                    GsGpu_SetTamanho(a.largura, a.altura);
-                }
+                /* O modo de ajuste da posição: as setas movem a imagem na hora. */
+                if (apertou & PAD_UP) a.pos_y -= AJUSTE_POS_PASSO;
+                if (apertou & PAD_DOWN) a.pos_y += AJUSTE_POS_PASSO;
+                if (apertou & PAD_LEFT) a.pos_x -= AJUSTE_POS_PASSO;
+                if (apertou & PAD_RIGHT) a.pos_x += AJUSTE_POS_PASSO;
+                a.pos_x = a.pos_x < -AJUSTE_POS_MAX ? -AJUSTE_POS_MAX : a.pos_x > AJUSTE_POS_MAX ? AJUSTE_POS_MAX : a.pos_x;
+                a.pos_y = a.pos_y < -AJUSTE_POS_MAX ? -AJUSTE_POS_MAX : a.pos_y > AJUSTE_POS_MAX ? AJUSTE_POS_MAX : a.pos_y;
+                GsGpu_SetPosicao(a.pos_x, a.pos_y);
                 if (apertou & (PAD_CROSS | PAD_CIRCLE | PAD_START)) a.ajustando = 0, a.movendo = 0;
             } else if (saindo < 0 && apertou) {
                 int dir = (apertou & PAD_LEFT) ? -1 : (apertou & PAD_RIGHT) ? 1 : 0;
                 contagem = 0;
-                if ((apertou & PAD_CROSS) && a.linha == AJUSTE_TAMANHO) {
+                if ((apertou & PAD_CROSS) && a.linha == AJUSTE_POSICAO) {
                     a.ajustando = 1;
                 } else if (apertou & (PAD_CROSS | PAD_START)) {
                     saindo = frame;
@@ -624,7 +612,7 @@ static void tela_ajustes(void)
                     if (a.linha == AJUSTE_VIDEO) a.video = a.video == VIDEO_480P ? VIDEO_240P : VIDEO_480P;
                     if (a.linha == AJUSTE_TELA) a.tela = !a.tela;
                     if (a.linha == AJUSTE_IDIOMA && !a.sem_traducao) a.idioma = !a.idioma;
-                    if (a.linha == AJUSTE_TAMANHO) a.ajustando = 1; /* as setas dos lados já entram no ajuste */
+                    if (a.linha == AJUSTE_POSICAO) a.ajustando = 1; /* as setas dos lados já entram no ajuste */
                     a.aviso = NULL;
                 }
             }
@@ -651,12 +639,12 @@ static void tela_ajustes(void)
         }
     }
     if (!ajustes_salvos || GsGpu_Video() != salvo_video || GsGpu_Wide() != salvo_tela || GsGpu_Visual() != salvo_suave ||
-        idioma != salvo_idioma || GsGpu_Largura() != salvo_largura || GsGpu_Altura() != salvo_altura ||
+        idioma != salvo_idioma ||
         GsGpu_PosicaoX() != salvo_px || GsGpu_PosicaoY() != salvo_py)
         save_visual();
     aplica_idioma();
-    printf("ps2: ajustes: video %d, 16:9 %d, suavizacao %d, tamanho %d%% x %d%%\n", GsGpu_Video(), GsGpu_Wide(),
-           GsGpu_Visual(), GsGpu_Largura(), GsGpu_Altura());
+    printf("ps2: ajustes: video %d, 16:9 %d, posicao %d %d\n", GsGpu_Video(), GsGpu_Wide(), GsGpu_PosicaoX(),
+           GsGpu_PosicaoY());
     ajustes_carregando(quadro, msx, 0);
     mostra();
     free(quadro);
@@ -920,33 +908,21 @@ void Platform_Frame(unsigned frame)
     }
     {
         /* Atalhos de vídeo, como no port do Mario: L2 + R2 + X troca 4:3 e
-         * 16:9; L2 + R2 + Círculo troca a suavização; L2 + R2 + as setas
-         * mudam o tamanho na TV, como o ajuste de tela de um monitor: cima e
-         * baixo a altura, direita e esquerda a largura (de 2 em 2%, 80 a
-         * 100), vendo o próprio jogo. Ficam salvos. */
+         * 16:9; L2 + R2 + as setas movem a imagem na TV (centralizar),
+         * vendo o próprio jogo. Ficam salvos. */
         static uint16_t before;
         uint16_t now = pad_bits | live_bits, pressed = now & ~before;
         before = now;
         if ((now & (PAD_L2 | PAD_R2)) == (PAD_L2 | PAD_R2) && (now & PAD_SELECT) == 0) {
             int changed = 0;
             if (pressed & PAD_CROSS) GsGpu_SetWide(!GsGpu_Wide()), changed = 1;
-            static int mover; /* L2 + R2 + Quadrado: as setas movem a imagem */
-            if (pressed & PAD_SQUARE) mover = !mover;
-            if (mover && (pressed & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT))) {
+            if (pressed & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) {
                 int px = GsGpu_PosicaoX(), py = GsGpu_PosicaoY();
                 if (pressed & PAD_UP) py -= AJUSTE_POS_PASSO;
                 if (pressed & PAD_DOWN) py += AJUSTE_POS_PASSO;
                 if (pressed & PAD_LEFT) px -= AJUSTE_POS_PASSO;
                 if (pressed & PAD_RIGHT) px += AJUSTE_POS_PASSO;
                 GsGpu_SetPosicao(px, py); /* limita de -16 a 16 */
-                changed = 1;
-            } else if (pressed & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) {
-                int l = GsGpu_Largura(), al = GsGpu_Altura();
-                if (pressed & PAD_UP) al += AJUSTE_TAM_PASSO;
-                if (pressed & PAD_DOWN) al -= AJUSTE_TAM_PASSO;
-                if (pressed & PAD_RIGHT) l += AJUSTE_TAM_PASSO;
-                if (pressed & PAD_LEFT) l -= AJUSTE_TAM_PASSO;
-                GsGpu_SetTamanho(l, al); /* limita de 80 a 100 */
                 changed = 1;
             }
             if (changed) {

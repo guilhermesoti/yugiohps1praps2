@@ -56,11 +56,9 @@ Ao ligar, a tela **AJUSTES** escolhe:
 
 - **Vídeo**: 240p (cabo AV, em qualquer TV) ou 480p (cabo componente ou adaptador HDMI). Um modo novo
   pergunta "A imagem apareceu?" e volta sozinho se ninguém apertar X em 10 s.
-- **Tamanho**: como o ajuste de tela de um monitor, para a TV não cortar as bordas (pelo AV muitas
-  TVs cortam um pedaço em cima e embaixo). Na linha Tamanho, aperte X: aparecem setas nas bordas;
-  cima/baixo mudam a altura e esquerda/direita a largura (de 100% a 80%, de 2 em 2), vendo a
-  própria tela AJUSTES. O **Quadrado** troca para mover a imagem (as setas a levam para cima, baixo e
-  os lados, sem perder nitidez). No jogo, **L2+R2 + as setas** (e L2+R2+Quadrado) fazem o mesmo vendo o jogo.
+- **Posição**: centraliza a imagem na TV (pelo AV muitas TVs mostram a imagem deslocada). Na linha
+  Posição, aperte X: aparecem setas nas bordas e as setas do controle movem a imagem, sem perder
+  nitidez. X termina. No jogo, **L2+R2 + as setas** fazem o mesmo vendo o jogo.
 - **Tela**: 4:3, ou 16:9 (mostra mais do cenário 3D dos lados; a imagem sai espremida para a TV
   em modo 16:9 esticar. O círculo do painel fica redondo com a TV no modo certo).
 - **Idioma**: Português (a tradução do port, `languages/pt-br.txt`; é o padrão) ou English (o

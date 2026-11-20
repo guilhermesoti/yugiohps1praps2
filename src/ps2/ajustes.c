@@ -189,7 +189,7 @@ static void olho(int x, int y) {
 
 /* ---- AJUSTES ---- */
 
-static const char *const kRotulo[AJUSTE_JOGAR] = {"Vídeo", "Tela", "Idioma", "Tamanho"};
+static const char *const kRotulo[AJUSTE_JOGAR] = {"Vídeo", "Tela", "Idioma", "Posição"};
 static const char *const kIdioma[2] = {"Português", "English"};
 static const char *const kVideoTxt[3][2] = {
     {"240p: cabo AV, em qualquer TV.", "A imagem mais parecida com o PS1."},
@@ -205,12 +205,11 @@ static const char *valor(const Ajustes *a, int linha) {
   switch (linha) {
   case AJUSTE_VIDEO: return videos[a->video];
   case AJUSTE_TELA: return a->tela ? "16:9" : "4:3";
-  case AJUSTE_TAMANHO: {
-    static char texto_tamanho[24];
-    if (a->ajustando && a->movendo) snprintf(texto_tamanho, sizeof(texto_tamanho), "posição %+d, %+d", a->pos_x, a->pos_y);
-    else if (a->largura == 100 && a->altura == 100) snprintf(texto_tamanho, sizeof(texto_tamanho), "100%%");
-    else snprintf(texto_tamanho, sizeof(texto_tamanho), "%d%% x %d%%", a->largura, a->altura);
-    return texto_tamanho;
+  case AJUSTE_POSICAO: {
+    static char texto_posicao[24];
+    if (!a->pos_x && !a->pos_y) snprintf(texto_posicao, sizeof(texto_posicao), "centro");
+    else snprintf(texto_posicao, sizeof(texto_posicao), "%+d, %+d", a->pos_x, a->pos_y);
+    return texto_posicao;
   }
   default: return kIdioma[a->idioma];
   }
@@ -276,25 +275,21 @@ static void painel(const Ajustes *a) {
       texto(tx, l3, "Vale para o jogo, não para esta tela.", CINZA, 1);
     }
     break;
-  case AJUSTE_TAMANHO:
-    if (a->ajustando && a->movendo) {
+  case AJUSTE_POSICAO:
+    if (a->ajustando) {
       texto(tx, l1, "Setas: movem a imagem.", BRANCO, 1);
-      texto(tx, l2, "Quadrado: volta ao tamanho.", TEXTO, 1);
-      texto(tx, l3, "X: pronto. Veja a moldura toda.", DOURADO, 1);
-    } else if (a->ajustando) {
-      texto(tx, l1, "Setas: altura e largura.", BRANCO, 1);
-      texto(tx, l2, "Quadrado: mover a imagem.", TEXTO, 1);
-      texto(tx, l3, "X: pronto. Veja a moldura toda.", DOURADO, 1);
+      texto(tx, l2, "Centralize a moldura na TV.", TEXTO, 1);
+      texto(tx, l3, "X: pronto.", DOURADO, 1);
     } else {
-      texto(tx, l1, "Para a TV não cortar as bordas.", BRANCO, 1);
+      texto(tx, l1, "Centraliza a imagem na TV.", BRANCO, 1);
       texto(tx, l2, "Aperte X e use as setas.", TEXTO, 1);
-      texto(tx, l3, "No jogo: L2+R2 + setas/Quadrado.", CINZA, 1);
+      texto(tx, l3, "No jogo: L2+R2 e as setas.", CINZA, 1);
     }
     break;
   default:
     texto(tx, l1, "X ou START começa. Fica tudo salvo.", BRANCO, 1);
     texto(tx, l2, "No jogo, L2+R2+X troca a tela;", TEXTO, 1);
-    texto(tx, l3, "L2+R2 e as setas: o tamanho.", TEXTO, 1);
+    texto(tx, l3, "L2+R2 e as setas: a posição.", TEXTO, 1);
     break;
   }
 }
