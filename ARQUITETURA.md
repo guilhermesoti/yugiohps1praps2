@@ -216,6 +216,16 @@ Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo
   original; otimizar pode mudar resultados.
 - **Literais `0x80...` reescritos só na cópia (`tmp/ps2/src`)**: os fontes em `src/game/` mostram os
   endereços originais do PS1, e o build converte na cópia.
+- **Bits `moved[]`/`uncached[]` de `relocate_ps2.c` sem "geração"** (auditoria de 21/11/2026, A3):
+  uma entrega menor num banco deixa ligados os bits do resto da entrega anterior. Isso está certo:
+  essas palavras não foram escritas de novo e ainda guardam o ponteiro reescrito (0xC0...); se um
+  `Ps2_UnrelocateRange` passar por elas, volta o 0x80... que o PS1 teria ali. Os bits só são
+  atualizados pela entrega do disco (`Memories_GuestWritten`, `modules.c`); o único que desfaz é o
+  `model_load_step.c`, sobre o payload do modelo que acabou de chegar do disco. Mentiria só se o
+  código do jogo escrevesse com a CPU num banco (sem passar pelo disco) e depois um modelo fosse lido
+  por cima dessas palavras: não achei caminho assim (conferidos os chamadores das três funções, não
+  todas as escritas do jogo nos bancos). Se aparecer um, limpar os bits do banco inteiro no começo da
+  entrega.
 
 ## 10. Diagnóstico
 
