@@ -6,7 +6,7 @@ processador do PS2 (Emotion Engine, MIPS R5900) e a imagem é desenhada pelo chi
 (o GS). Os dados do jogo (cartas, músicas, modelos 3D e vídeos) são lidos da sua própria imagem
 `.bin` do disco, que **não** vem neste repositório.
 
-**Site do projeto:** https://guilhermesoti.github.io/yugiohps1praps2/ (download, como jogar e o criador do port direto no navegador)
+**Site do projeto:** https://portretrogames.github.io/yugiohps1praps2/ (download, como jogar e o criador do port direto no navegador)
 
 - Como funciona por dentro, mapa das pastas e pontos de atenção para quem for analisar o código:
   **[ARQUITETURA.md](ARQUITETURA.md)**
@@ -18,7 +18,7 @@ processador do PS2 (Emotion Engine, MIPS R5900) e a imagem é desenhada pelo chi
 ## Como jogar
 
 Baixe o pacote **`YFM_PS2_vX.Y.Z-beta.zip`** da última versão em
-[Releases](https://github.com/guilhermesoti/yugiohps1praps2/releases) e extraia. Ele traz a
+[Releases](https://github.com/portretrogames/yugiohps1praps2/releases) e extraia. Ele traz a
 pasta `YFM` (ELF, `criar-port.html`, `montar_iso.exe`, tradução, LEIA-ME) e a pasta `ART` (capas do
 OPL). **A imagem do jogo não vem no pacote**: use a do seu disco (USA, SLUS-01411).
 

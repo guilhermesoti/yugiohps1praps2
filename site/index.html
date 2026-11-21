@@ -111,12 +111,12 @@
 <body>
 
 <nav><div class="wrap">
-  <a class="brand" href="https://guilhermesoti.github.io/">← PORTS RETROGAMES</a>
+  <a class="brand" href="https://portretrogames.github.io/">← PORTS RETROGAMES</a>
   <a class="l" href="#jogar">Como jogar</a>
   <a class="l" href="#situacao">Situação</a>
   <a class="l" href="#creditos">Créditos</a>
   <a class="l" href="#apoie">Apoie</a>
-  <a class="l" href="https://github.com/guilhermesoti/yugiohps1praps2">GitHub</a>
+  <a class="l" href="https://github.com/portretrogames/yugiohps1praps2">GitHub</a>
 </div></nav>
 
 <header><div class="wrap hero">
@@ -125,7 +125,7 @@
     <h1>Yu-Gi-Oh! Forbidden Memories <span>no PlayStation 2</span></h1>
     <p class="lead">Não é emulador: o código do jogo de PS1, decompilado para C, foi recompilado para o processador do PS2. Roda a 60 fps pelo OPL, com tradução nova em português e os nomes das cartas como na dublagem brasileira.</p>
     <div class="btns">
-      <a class="btn" id="dl" href="https://github.com/guilhermesoti/yugiohps1praps2/releases">⬇ Baixar o pacote</a>
+      <a class="btn" id="dl" href="https://github.com/portretrogames/yugiohps1praps2/releases">⬇ Baixar o pacote</a>
       <a class="btn ghost" href="criar-port.html">Criar o port no navegador</a>
     </div>
     <div class="rel" id="rel">Todas as versões em Releases.</div>
@@ -175,7 +175,7 @@
     <div class="way">
       <h3>Pelo ELF no pendrive</h3>
       <ol>
-        <li>Baixe e extraia o <a href="https://github.com/guilhermesoti/yugiohps1praps2/releases">pacote da última versão</a>.</li>
+        <li>Baixe e extraia o <a href="https://github.com/portretrogames/yugiohps1praps2/releases">pacote da última versão</a>.</li>
         <li>No pendrive (FAT32 ou exFAT), crie uma pasta, por exemplo <code>APPS/YFM</code>, e copie para ela o conteúdo da pasta <code>YFM</code> do pacote.</li>
         <li>Coloque junto a imagem do seu disco renomeada para <code>YFM.bin</code>.</li>
         <li>No PS2, abra o <code>YFM_PS2.ELF</code> pelo OPL (como app) ou pelo wLaunchELF. No PCSX2: <i>Sistema → Iniciar ELF</i>.</li>
@@ -218,7 +218,7 @@
 
 <section id="situacao"><div class="wrap">
   <h2><small>Situação</small>O que já funciona</h2>
-  <p class="sub">Testado no PCSX2 e num PS2 de verdade (pendrive exFAT, pelo OPL). Projeto em beta: se algo der errado, <a href="https://github.com/guilhermesoti/yugiohps1praps2/issues">abra uma issue</a> com o <code>YFM-LOG.txt</code> e uma foto da tela.</p>
+  <p class="sub">Testado no PCSX2 e num PS2 de verdade (pendrive exFAT, pelo OPL). Projeto em beta: se algo der errado, <a href="https://github.com/portretrogames/yugiohps1praps2/issues">abra uma issue</a> com o <code>YFM-LOG.txt</code> e uma foto da tela.</p>
   <table>
     <tr><th>Parte</th><th>Situação</th></tr>
     <tr><td>Abertura, título, menus, nome, prólogo, montar deck</td><td class="st ok">Funciona</td></tr>
@@ -233,7 +233,7 @@
 
 <section id="creditos"><div class="wrap">
   <h2><small>Créditos</small>Quem fez este port existir</h2>
-  <p class="sub">Projeto gratuito e feito por fãs, em cima do trabalho de muita gente. Detalhes em <a href="https://github.com/guilhermesoti/yugiohps1praps2/blob/main/CREDITOS.md">CREDITOS.md</a>.</p>
+  <p class="sub">Projeto gratuito e feito por fãs, em cima do trabalho de muita gente. Detalhes em <a href="https://github.com/portretrogames/yugiohps1praps2/blob/main/CREDITOS.md">CREDITOS.md</a>.</p>
   <div class="cred">
     <div class="card"><h3>Guilherme Soti · Retrogames Patos de Minas</h3><p>Ideia, direção e todos os testes num PS2 de verdade.</p></div>
     <div class="card"><h3>Claude, Gemini e ChatGPT</h3><p>Desenvolvimento da camada PS2 (Claude) e revisões técnicas (Gemini e ChatGPT).</p></div>
@@ -263,7 +263,7 @@
 
 <footer><div class="wrap">
   <p><i>Yu-Gi-Oh!</i> e <i>Forbidden Memories</i> são da Konami. <i>Yu-Gi-Oh!</i> © 1996 Kazuki Takahashi. Este site e o repositório não contêm o jogo nem seus dados: é preciso ter a sua própria cópia do disco. Projeto de fãs, sem ligação com a Konami.</p>
-  <p><a href="https://guilhermesoti.github.io/">Outros ports da Retrogames</a> · Código do port sob a licença MIT · <a href="https://github.com/guilhermesoti/yugiohps1praps2">github.com/guilhermesoti/yugiohps1praps2</a></p>
+  <p><a href="https://portretrogames.github.io/">Outros ports da Retrogames</a> · Código do port sob a licença MIT · <a href="https://github.com/portretrogames/yugiohps1praps2">github.com/portretrogames/yugiohps1praps2</a></p>
 </div></footer>
 
 <script>
@@ -271,7 +271,7 @@
   (async () => {
     try {
       // a release mais nova, beta (pré-lançamento) ou não
-      const r = await fetch("https://api.github.com/repos/guilhermesoti/yugiohps1praps2/releases?per_page=1");
+      const r = await fetch("https://api.github.com/repos/portretrogames/yugiohps1praps2/releases?per_page=1");
       if (!r.ok) return;
       const rel = (await r.json())[0];
       if (!rel) return;
