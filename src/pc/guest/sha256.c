@@ -60,3 +60,46 @@ void Sha256(const void *data, size_t length, uint8_t digest[32])
         digest[i] = (uint8_t)(h[i / 4] >> (24 - 8 * (i % 4)));
     }
 }
+
+void Sha256Begin(Sha256Ctx *ctx)
+{
+    static const uint32_t start[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+                                      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+    unsigned i;
+    for (i = 0; i < 8; i++) ctx->h[i] = start[i];
+    ctx->used = 0;
+    ctx->length = 0;
+}
+
+void Sha256Add(Sha256Ctx *ctx, const void *data, size_t length)
+{
+    const uint8_t *p = (const uint8_t *)data;
+    ctx->length += length;
+    while (length) {
+        size_t take = 64 - ctx->used;
+        if (take > length) take = length;
+        if (!ctx->used && take == 64) {
+            block(ctx->h, p);
+        } else {
+            size_t i;
+            for (i = 0; i < take; i++) ctx->buffer[ctx->used + i] = p[i];
+            ctx->used += take;
+            if (ctx->used == 64) {
+                block(ctx->h, ctx->buffer);
+                ctx->used = 0;
+            }
+        }
+        p += take;
+        length -= take;
+    }
+}
+
+void Sha256End(Sha256Ctx *ctx, uint8_t digest[32])
+{
+    uint64_t bits = ctx->length * 8;
+    uint8_t pad[72] = {0x80};
+    size_t padding = ctx->used < 56 ? 56 - ctx->used : 120 - ctx->used, i;
+    for (i = 0; i < 8; i++) pad[padding + i] = (uint8_t)(bits >> (56 - 8 * i));
+    Sha256Add(ctx, pad, padding + 8);
+    for (i = 0; i < 32; i++) digest[i] = (uint8_t)(ctx->h[i / 4] >> (24 - 8 * (i % 4)));
+}

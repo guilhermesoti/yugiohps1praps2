@@ -83,19 +83,26 @@ void Ps2_UnrelocateRange(void *data, size_t size)
 /* SHA-256 of guest bytes as the disc delivered them. */
 void Ps2_Sha256Retail(const void *data, size_t size, uint8_t digest[32])
 {
-    uint32_t at = (uint32_t)(uintptr_t)data, retail = (at & 0x1FFFFFu) | 0x80000000u, i;
-    uint32_t *copy;
-    if (at < 0xC0000000u || retail < FIRST || retail + size > LAST || (size & 3) || (at & 3) ||
-        !(copy = malloc(size))) {
+    /* Em pedaços de 4 KB num buffer fixo: antes era uma cópia do bloco
+     * inteiro no heap, e sem memória o hash saía do bloco relocado (errado,
+     * e o módulo contava como modificado). Revisão do Qwen, 21/11/2026. */
+    static uint32_t piece[1024];
+    uint32_t at = (uint32_t)(uintptr_t)data, retail = (at & 0x1FFFFFu) | 0x80000000u, i, done;
+    Sha256Ctx ctx;
+    if (at < 0xC0000000u || retail < FIRST || retail + size > LAST || (size & 3) || (at & 3)) {
         Sha256(data, size, digest);
         return;
     }
-    memcpy(copy, data, size);
-    for (i = 0; i < size / 4; i++) {
-        uint32_t index = (retail - FIRST) / 4 + i, bit = 1u << (index & 31);
-        if (moved[index / 32] & bit)
-            copy[i] = (copy[i] & 0x1FFFFFu) | ((uncached[index / 32] & bit) ? 0xA0000000u : 0x80000000u);
+    Sha256Begin(&ctx);
+    for (done = 0; done < size; done += sizeof(piece)) {
+        uint32_t bytes = size - done < sizeof(piece) ? (uint32_t)(size - done) : (uint32_t)sizeof(piece);
+        memcpy(piece, (const uint8_t *)data + done, bytes);
+        for (i = 0; i < bytes / 4; i++) {
+            uint32_t index = (retail + done - FIRST) / 4 + i, bit = 1u << (index & 31);
+            if (moved[index / 32] & bit)
+                piece[i] = (piece[i] & 0x1FFFFFu) | ((uncached[index / 32] & bit) ? 0xA0000000u : 0x80000000u);
+        }
+        Sha256Add(&ctx, piece, bytes);
     }
-    Sha256(copy, size, digest);
-    free(copy);
+    Sha256End(&ctx, digest);
 }
