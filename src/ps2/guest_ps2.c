@@ -308,17 +308,33 @@ static volatile long long ring_head = -1; /* the chunk being read now: the ring 
 static long long file_position = -1;      /* where the reader left the file (no lseek when it follows on) */
 static unsigned char reader_stack[16384] __attribute__((aligned(16)));
 
+/* Reads a whole chunk: a read() that returns less than asked (the USB can)
+ * is followed by more, as Ps2_Fread does. A short chunk used to stay in the
+ * ring as READY, and every read past its end came back 0, an end of file in
+ * the middle of the disc (auditoria de 21/11/2026, A1). Short now only at the
+ * file's real end, or after an error. */
+static unsigned short_reads; /* read() que voltou com menos que o pedido */
 static int read_chunk(int fd, long long chunk, uint8_t *into)
 {
-    ssize_t got;
     off_t at = (off_t)(chunk * DISC_CHUNK);
+    int total = 0;
     if (file_position != (long long)at && lseek(fd, at, SEEK_SET) < 0) {
         file_position = -1;
         return -1;
     }
-    got = read(fd, into, DISC_CHUNK);
-    file_position = got > 0 ? (long long)at + got : -1;
-    return (int)got;
+    while (total < DISC_CHUNK) {
+        ssize_t got = read(fd, into + total, DISC_CHUNK - total);
+        if (got < 0) {
+            file_position = -1;
+            return total ? total : -1;
+        }
+        if (got == 0) break; /* the end of the file */
+        if (total && !short_reads++) /* this read completes a short one: it happens here */
+            printf("ps2: disco: leitura curta no setor %lld, completada\n", (long long)(at + total) / 2352);
+        total += (int)got;
+        file_position = (long long)at + total;
+    }
+    return total;
 }
 
 static void reader(void *argument)
