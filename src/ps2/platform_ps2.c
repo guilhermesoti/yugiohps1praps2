@@ -897,6 +897,12 @@ static unsigned underruns;    /* o buffer do audsrv secou: a TV fica sem som (um
 static unsigned overflows;    /* não coube tudo: o SPU do jogo atrasa um pouco */
 static int audio_capacity;    /* o buffer do audsrv, em quadros estéreo (no PCSX2, 1175: 53 ms) */
 static int audio_target = 735; /* o nível em que a fila fica depois de cada escrita: 2/3 do buffer */
+/* audsrv_available() preso em 0: o som iria parar de vez (nada cabe), com o log
+ * mostrando só "audio sem folga". Depois de AUDIO_ZERO_MAX chamadas seguidas
+ * assim, escreve o que o relógio pede (até audio_target), sem o contador, até
+ * ele voltar a dar espaço (auditoria de 21/11/2026, A4). */
+#define AUDIO_ZERO_MAX 30
+static int audio_zero_room, audio_by_time;
 
 static uint64_t now_us(void)
 {
@@ -942,7 +948,22 @@ void Ps2_PumpAudio(void)
         audio_clock_us += (uint64_t)frames * 1000000u / 22050u;
         room = audsrv_available() / 4;
         if (room < 0) room = 0;
-        if (audio_capacity > 0) {
+        if (room == 0) {
+            if (++audio_zero_room >= AUDIO_ZERO_MAX && !audio_by_time) {
+                audio_by_time = 1;
+                printf("ps2: audio: contador do audsrv nao confiavel, modo por tempo\n");
+            }
+        } else {
+            audio_zero_room = 0;
+            if (audio_by_time) {
+                audio_by_time = 0;
+                printf("ps2: audio: contador do audsrv voltou\n");
+            }
+        }
+        if (audio_by_time) {
+            if ((int)frames > audio_target) frames = (size_t)audio_target;
+            room = (int)frames; /* sem o contador: o relógio manda */
+        } else if (audio_capacity > 0) {
             int queued = audio_capacity - (room < audio_capacity ? room : audio_capacity), fix;
             /* A fila secou desde a última chamada: a TV ficou um instante sem som. */
             if (queued <= 16) underruns++;
