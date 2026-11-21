@@ -1,0 +1,47 @@
+# Publica o site do projeto (pasta site/) no GitHub Pages.
+# Roda quando o site muda, depois que a Action "Release" termina (para o site
+# levar o criar-port.html da versão nova) e também à mão (Actions > Site > Run workflow).
+# O criar-port.html não fica no código: é baixado da última release a cada publicação.
+name: Site
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar o site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p _site
+          cp -r site/. _site/
+          rm -f _site/criar-port.html
+          # O criador da última release, para usar direto pelo site
+          # (a mais nova, mesmo marcada como pré-lançamento/beta)
+          TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq ".[0].tagName")
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern criar-port.html --dir _site \
+            || echo "Aviso: a última release não tem criar-port.html"
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

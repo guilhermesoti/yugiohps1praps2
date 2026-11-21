@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yu-Gi-Oh! Forbidden Memories — port nativo para PS2</title>
+<meta name="description" content="Port nativo e gratuito de Yu-Gi-Oh! Forbidden Memories (PS1) para o PlayStation 2, em português do Brasil. Roda direto no PS2 pelo OPL, sem emulador.">
+<meta property="og:title" content="Yu-Gi-Oh! Forbidden Memories — port nativo para PS2">
+<meta property="og:description" content="Não é emulador: o jogo roda direto no processador do PS2, a 60 fps, em português do Brasil.">
+<meta property="og:image" content="img/duelo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070b22; --panel:#10163d; --panel2:#161d4f; --line:#2a3373;
+    --gold:#e6b93f; --gold2:#ffd970; --text:#e9e7f3; --mut:#a3a6c8; --ok:#69d38a; --warn:#f0b35a;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 Inter,system-ui,sans-serif;
+    background-image:radial-gradient(ellipse at 50% -10%,#1c2470 0,transparent 60%),
+      repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.012) 3px 4px)}
+  a{color:var(--gold2)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  .pix{font-family:VT323,monospace;letter-spacing:.5px}
+  nav{position:sticky;top:0;z-index:5;background:rgba(7,11,34,.88);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;gap:22px;height:56px}
+  nav .brand{font-family:VT323,monospace;font-size:24px;color:var(--gold);text-decoration:none;margin-right:auto}
+  nav a.l{color:var(--mut);text-decoration:none;font-size:14px}
+  nav a.l:hover{color:var(--text)}
+  @media(max-width:760px){nav a.l{display:none}}
+
+  header{padding:72px 0 48px}
+  .hero{display:grid;grid-template-columns:1.05fr 1fr;gap:44px;align-items:center}
+  @media(max-width:860px){.hero{grid-template-columns:1fr}}
+  .tag{display:inline-block;border:1px solid var(--gold);color:var(--gold);padding:2px 10px;font-size:20px;margin-bottom:18px}
+  h1{font-size:clamp(32px,5vw,52px);line-height:1.05;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}
+  h1 span{display:block;color:var(--gold)}
+  .lead{color:var(--mut);font-size:18px;margin:0 0 28px;max-width:34em}
+  .btns{display:flex;flex-wrap:wrap;gap:12px}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;font-weight:600;text-decoration:none;
+    border:2px solid var(--gold);color:var(--bg);background:var(--gold);transition:.15s}
+  .btn:hover{background:var(--gold2);border-color:var(--gold2)}
+  .btn.ghost{background:transparent;color:var(--gold)}
+  .btn.ghost:hover{background:rgba(230,185,63,.12)}
+  .rel{margin-top:16px;color:var(--mut);font-size:14px;min-height:1.6em}
+  .screen{position:relative;border:3px solid var(--gold);padding:6px;background:var(--panel);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .screen::after{content:"";position:absolute;inset:6px;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px)}
+  .screen img{display:block;width:100%;image-rendering:pixelated}
+
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  h2{font-size:30px;margin:0 0 8px;letter-spacing:-.01em}
+  h2 small{display:block;font-family:VT323,monospace;color:var(--gold);font-size:22px;font-weight:400;letter-spacing:1px;text-transform:uppercase}
+  .sub{color:var(--mut);margin:0 0 30px;max-width:46em}
+
+  .feat{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:860px){.feat{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);padding:20px 22px}
+  .card h3{margin:0 0 6px;font-size:17px}
+  .card p{margin:0;color:var(--mut);font-size:15px}
+  .card .ic{font-family:VT323,monospace;color:var(--gold);font-size:26px;line-height:1;margin-bottom:10px}
+
+  .gal{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:860px){.gal{grid-template-columns:1fr}}
+  figure{margin:0}
+  figure .screen{padding:4px;border-width:2px}
+  figcaption{color:var(--mut);font-size:14px;margin-top:8px}
+
+  .steps{display:grid;gap:16px}
+  .way{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--gold);padding:22px 24px}
+  .way h3{margin:0 0 4px;font-size:19px}
+  .way .badge{font-family:VT323,monospace;color:var(--bg);background:var(--gold);padding:0 8px;font-size:18px;margin-left:8px;vertical-align:2px;white-space:nowrap;display:inline-block}
+  .way ol{margin:10px 0 0;padding-left:22px;color:var(--text)}
+  .way li{margin:4px 0}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;background:var(--panel2);border:1px solid var(--line);padding:1px 6px}
+  .note{margin-top:18px;padding:14px 18px;background:rgba(230,185,63,.08);border:1px solid rgba(230,185,63,.35);color:var(--text);font-size:15px}
+
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}
+  th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);font-size:15px;vertical-align:top}
+  th{font-family:VT323,monospace;font-weight:400;font-size:20px;color:var(--gold);letter-spacing:.5px}
+  tr:last-child td{border-bottom:0}
+  .st{white-space:nowrap;font-weight:600}
+  .st.ok{color:var(--ok)} .st.w{color:var(--warn)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start}
+  @media(max-width:860px){.two{grid-template-columns:1fr}}
+  ul.k{margin:0;padding:0;list-style:none}
+  ul.k li{padding:10px 0;border-bottom:1px dashed var(--line)}
+  ul.k li b{color:var(--gold2)}
+  kbd{font-family:VT323,monospace;font-size:18px;background:var(--panel2);border:1px solid var(--gold);color:var(--gold2);padding:0 7px}
+
+  .cred{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){.cred{grid-template-columns:1fr}}
+
+  .apoio{display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center;background:var(--panel);border:2px solid var(--gold);padding:28px}
+  @media(max-width:760px){.apoio{grid-template-columns:1fr;text-align:center}}
+  .apoio img{width:200px;height:200px;background:#fff;padding:10px;image-rendering:pixelated}
+  .key{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  .key code{font-size:14px;padding:6px 10px;word-break:break-all}
+  .copy{cursor:pointer;border:1px solid var(--gold);background:transparent;color:var(--gold);padding:6px 12px;font:600 14px Inter,sans-serif}
+  .copy:hover{background:rgba(230,185,63,.12)}
+
+  footer{border-top:1px solid var(--line);padding:32px 0 48px;color:var(--mut);font-size:14px}
+  footer p{margin:6px 0}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="brand" href="#">YFM · PS2</a>
+  <a class="l" href="#jogar">Como jogar</a>
+  <a class="l" href="#situacao">Situação</a>
+  <a class="l" href="#creditos">Créditos</a>
+  <a class="l" href="#apoie">Apoie</a>
+  <a class="l" href="https://github.com/guilhermesoti/yugiohps1praps2">GitHub</a>
+</div></nav>
+
+<header><div class="wrap hero">
+  <div>
+    <div class="tag pix">PORT NATIVO · PT-BR · GRÁTIS</div>
+    <h1>Yu-Gi-Oh! Forbidden Memories <span>no PlayStation 2</span></h1>
+    <p class="lead">Não é emulador: o código do jogo de PS1, decompilado para C, foi recompilado para o processador do PS2. Roda a 60 fps pelo OPL, com tradução nova em português e os nomes das cartas como na dublagem brasileira.</p>
+    <div class="btns">
+      <a class="btn" id="dl" href="https://github.com/guilhermesoti/yugiohps1praps2/releases">⬇ Baixar o pacote</a>
+      <a class="btn ghost" href="criar-port.html">Criar o port no navegador</a>
+    </div>
+    <div class="rel" id="rel">Todas as versões em Releases.</div>
+  </div>
+  <figure>
+    <div class="screen"><img src="img/duelo.png" alt="Campo de duelo em 3D rodando no PS2, com a mão de cartas em português" width="480" height="360"></div>
+    <figcaption>Duelo rodando num PS2 de verdade, pelo OPL.</figcaption>
+  </figure>
+</div></header>
+
+<section><div class="wrap">
+  <h2><small>O que tem de novo</small>Feito para o PS2, não emulado</h2>
+  <p class="sub">Emuladores de PS1 no PS2 costumam travar, perder som ou errar a imagem. Aqui o jogo roda direto no Emotion Engine e é desenhado pelo chip gráfico do PS2.</p>
+  <div class="feat">
+    <div class="card"><div class="ic">60 FPS</div><h3>Duelos e batalhas 3D lisos</h3><p>Campo 3D, fusões, campos e a batalha dos monstros (Quadrado) a 60 quadros por segundo.</p></div>
+    <div class="card"><div class="ic">PT-BR</div><h3>Tudo em português</h3><p>Textos, menus, cartas e descrições. "Dragão Branco de Olhos Azuis", como no desenho.</p></div>
+    <div class="card"><div class="ic">480p · 16:9</div><h3>Para qualquer TV</h3><p>240p pelo cabo AV ou 480p por componente e adaptador HDMI. Tela 4:3 ou 16:9 e ajuste da posição da imagem.</p></div>
+    <div class="card"><div class="ic">SAVE</div><h3>5 slots de save</h3><p>No pendrive, ao lado do jogo, ou no memory card quando roda pela ISO.</p></div>
+    <div class="card"><div class="ic">TRAPAÇAS</div><h3>Trapaças prontas e GameShark</h3><p>Todas as cartas, duelistas liberados, StarChips, ver a mão do CPU, e seus próprios códigos GameShark.</p></div>
+    <div class="card"><div class="ic">OPL</div><h3>Com capa no OPL</h3><p>Como ISO aparece na lista de jogos com capa; como app aparece na aba Apps.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2><small>Telas</small>Rodando no console</h2>
+  <p class="sub">Capturas do port no PS2 e no PCSX2.</p>
+  <div class="gal">
+    <figure><div class="screen"><img src="img/carta-ptbr.png" alt="Tela de carta com nome, tipo, estrelas guardiãs e descrição em português" loading="lazy" width="480" height="360"></div><figcaption>Cartas e descrições em português.</figcaption></figure>
+    <figure><div class="screen"><img src="img/duelo.png" alt="Campo de duelo em 3D" loading="lazy" width="480" height="360"></div><figcaption>Campo de duelo em 3D, 60 fps.</figcaption></figure>
+    <figure><div class="screen"><img src="img/ajustes.png" alt="Tela AJUSTES do port com opções de vídeo, tela, idioma e posição" loading="lazy" width="640" height="480"></div><figcaption>Tela AJUSTES: vídeo, tela, idioma e posição.</figcaption></figure>
+  </div>
+</div></section>
+
+<section id="jogar"><div class="wrap">
+  <h2><small>Como jogar</small>Três jeitos, escolha um</h2>
+  <p class="sub">Você precisa da imagem <b>.bin/.cue do seu próprio disco</b> de <i>Yu-Gi-Oh! Forbidden Memories</i> (versão americana, SLUS-01411). O jogo não vem no pacote nem neste site.</p>
+  <div class="steps">
+    <div class="way">
+      <h3>Pelo criador no navegador <span class="badge">MAIS FÁCIL</span></h3>
+      <ol>
+        <li>Abra o <a href="criar-port.html">criador do port</a> no Chrome, Edge ou Firefox (também vem no pacote como <code>criar-port.html</code>).</li>
+        <li>Escolha o <code>.bin</code> e o <code>.cue</code> do seu disco e o formato: <b>ISO</b> ou <b>Aplicativo</b>.</li>
+        <li><b>ISO:</b> ponha na pasta <code>CD</code> do pendrive e a pasta <code>ART</code> do pacote na raiz, para aparecer a capa. <b>Aplicativo:</b> extraia o ZIP na raiz do pendrive; o jogo aparece na aba Apps do OPL.</li>
+      </ol>
+      <div class="note">Tudo acontece no seu computador: o jogo não é enviado para lugar nenhum.</div>
+    </div>
+    <div class="way">
+      <h3>Pelo ELF no pendrive</h3>
+      <ol>
+        <li>Baixe e extraia o <a href="https://github.com/guilhermesoti/yugiohps1praps2/releases">pacote da última versão</a>.</li>
+        <li>No pendrive (FAT32 ou exFAT), crie uma pasta, por exemplo <code>APPS/YFM</code>, e copie para ela o conteúdo da pasta <code>YFM</code> do pacote.</li>
+        <li>Coloque junto a imagem do seu disco renomeada para <code>YFM.bin</code>.</li>
+        <li>No PS2, abra o <code>YFM_PS2.ELF</code> pelo OPL (como app) ou pelo wLaunchELF. No PCSX2: <i>Sistema → Iniciar ELF</i>.</li>
+      </ol>
+    </div>
+    <div class="way">
+      <h3>Pelo <code>montar_iso.exe</code> (Windows)</h3>
+      <ol>
+        <li>Coloque a imagem <code>.bin</code> do seu disco na pasta <code>YFM</code> do pacote.</li>
+        <li>Dois cliques no <code>montar_iso.exe</code>: ele cria <code>RGPM_001.01.Yu-Gi-Oh FM PS2.iso</code>.</li>
+        <li>Copie a ISO para a pasta <code>CD</code> do pendrive e abra pelo OPL.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="note">A ISO e o aplicativo gerados têm o seu jogo dentro: não compartilhe esses arquivos.</div>
+</div></section>
+
+<section><div class="wrap two">
+  <div>
+    <h2><small>Tela AJUSTES</small>Configure ao ligar</h2>
+    <ul class="k">
+      <li><b>Vídeo:</b> 240p (cabo AV, qualquer TV) ou 480p (componente ou HDMI). Se a imagem não aparecer, volta sozinho em 10 s.</li>
+      <li><b>Posição:</b> centraliza a imagem na TV com as setas, sem perder nitidez.</li>
+      <li><b>Tela:</b> 4:3 ou 16:9, que mostra mais do cenário 3D dos lados.</li>
+      <li><b>Idioma:</b> Português (padrão) ou English.</li>
+      <li><b>Trapaças:</b> liga e desliga as prontas, ou use as suas em <code>TRAPACAS.TXT</code>.</li>
+    </ul>
+  </div>
+  <div>
+    <h2><small>Atalhos</small>Durante o jogo</h2>
+    <ul class="k">
+      <li><kbd>L2</kbd> + <kbd>R2</kbd> + <kbd>↑↓←→</kbd> move a imagem na TV</li>
+      <li><kbd>L2</kbd> + <kbd>R2</kbd> + <kbd>✕</kbd> troca entre 4:3 e 16:9</li>
+      <li><kbd>□</kbd> ao escolher o alvo mostra a batalha 3D</li>
+      <li><kbd>✕</kbd> ao escolher o alvo faz o ataque rápido</li>
+      <li><kbd>START</kbd> pula a abertura</li>
+    </ul>
+  </div>
+</div></section>
+
+<section id="situacao"><div class="wrap">
+  <h2><small>Situação</small>O que já funciona</h2>
+  <p class="sub">Testado no PCSX2 e num PS2 de verdade (pendrive exFAT, pelo OPL). Projeto em beta: se algo der errado, <a href="https://github.com/guilhermesoti/yugiohps1praps2/issues">abra uma issue</a> com o <code>YFM-LOG.txt</code> e uma foto da tela.</p>
+  <table>
+    <tr><th>Parte</th><th>Situação</th></tr>
+    <tr><td>Abertura, título, menus, nome, prólogo, montar deck</td><td class="st ok">Funciona</td></tr>
+    <tr><td>Duelos (mão, campo 3D, estrelas, fusão, campos, CPU)</td><td class="st ok">Funciona, 60 fps</td></tr>
+    <tr><td>Batalha 3D dos monstros</td><td class="st ok">Funciona, 60 fps</td></tr>
+    <tr><td>Som</td><td class="st ok">Funciona</td></tr>
+    <tr><td>Save e load</td><td class="st ok">Funciona, 5 slots</td></tr>
+    <tr><td>Português (BR)</td><td class="st ok">Textos, menus, cartas e descrições</td></tr>
+    <tr><td>Vídeos (FMV)</td><td class="st w">15 fps no PCSX2; no console ainda em ajuste</td></tr>
+  </table>
+</div></section>
+
+<section id="creditos"><div class="wrap">
+  <h2><small>Créditos</small>Quem fez este port existir</h2>
+  <p class="sub">Projeto gratuito e feito por fãs, em cima do trabalho de muita gente. Detalhes em <a href="https://github.com/guilhermesoti/yugiohps1praps2/blob/main/CREDITOS.md">CREDITOS.md</a>.</p>
+  <div class="cred">
+    <div class="card"><h3>Guilherme Soti · Retrogames Patos de Minas</h3><p>Ideia, direção e todos os testes num PS2 de verdade.</p></div>
+    <div class="card"><h3>Claude, Gemini e ChatGPT</h3><p>Desenvolvimento da camada PS2 (Claude) e revisões técnicas (Gemini e ChatGPT).</p></div>
+    <div class="card"><h3>Jogo decompilado</h3><p><a href="https://github.com/Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled">FM Recompiled</a> (Unchiga e contribuidores) e <a href="https://github.com/krystalgamer/memories-decomp">memories-decomp</a> (krystalgamer e colaboradores).</p></div>
+    <div class="card"><h3>Ferramentas do PS2</h3><p><a href="https://github.com/ps2dev/ps2dev">ps2dev</a>, <a href="https://github.com/ps2dev/ps2sdk">PS2SDK</a>, <a href="https://github.com/ps2dev/gsKit">gsKit</a>, <a href="https://github.com/PCSX2/pcsx2">PCSX2</a>, <a href="https://github.com/ps2homebrew/Open-PS2-Loader">OPL</a> e <a href="https://github.com/ps2homebrew/wLaunchELF">wLaunchELF</a>.</p></div>
+  </div>
+</div></section>
+
+<section id="apoie"><div class="wrap">
+  <h2><small>Apoie</small>Ajude os próximos ports</h2>
+  <p class="sub">O port é e vai continuar gratuito. Se ele te ajudou e você quiser apoiar os próximos, como o do Tekken 3, qualquer valor ajuda.</p>
+  <div class="apoio">
+    <img src="img/pix-qrcode.png" alt="QR code Pix para doação" width="200" height="200">
+    <div>
+      <h3 style="margin:0">Pix (chave aleatória)</h3>
+      <div class="key">
+        <code id="pixkey">f19e4d1b-f35c-4541-919b-87a2cb540b9c</code>
+        <button class="copy" data-copy="pixkey">Copiar chave</button>
+        <button class="copy" data-copy="pixcc">Copiar Pix copia e cola</button>
+      </div>
+      <span id="pixcc" hidden>00020126580014br.gov.bcb.pix0136f19e4d1b-f35c-4541-919b-87a2cb540b9c5204000053039865802BR5914GUILHERME SOTI6014PATOS DE MINAS62070503***63048E1F</span>
+      <p style="margin:6px 0 0;color:var(--mut)">De fora do Brasil? / Outside Brazil? <a href="https://ko-fi.com/guilhermesoti">ko-fi.com/guilhermesoti</a></p>
+      <p style="margin:6px 0 0;color:var(--mut);font-size:14px">Doação é voluntária e não libera nada extra: o código e as builds continuam livres para todos.</p>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <p><i>Yu-Gi-Oh!</i> e <i>Forbidden Memories</i> são da Konami. <i>Yu-Gi-Oh!</i> © 1996 Kazuki Takahashi. Este site e o repositório não contêm o jogo nem seus dados: é preciso ter a sua própria cópia do disco. Projeto de fãs, sem ligação com a Konami.</p>
+  <p>Código do port sob a licença MIT · <a href="https://github.com/guilhermesoti/yugiohps1praps2">github.com/guilhermesoti/yugiohps1praps2</a></p>
+</div></footer>
+
+<script>
+  // Versão mais recente direto da API do GitHub (se falhar, os links continuam indo para Releases)
+  (async () => {
+    try {
+      // a release mais nova, beta (pré-lançamento) ou não
+      const r = await fetch("https://api.github.com/repos/guilhermesoti/yugiohps1praps2/releases?per_page=1");
+      if (!r.ok) return;
+      const rel = (await r.json())[0];
+      if (!rel) return;
+      const zip = (rel.assets || []).find(a => /\.zip$/i.test(a.name));
+      if (zip) document.getElementById("dl").href = zip.browser_download_url;
+      const d = new Date(rel.published_at).toLocaleDateString("pt-BR");
+      const el = document.getElementById("rel");
+      el.textContent = "";
+      const a = document.createElement("a");
+      a.href = rel.html_url; a.textContent = rel.name || rel.tag_name;
+      el.append("Versão mais recente: ", a, " · " + d);
+    } catch (e) {}
+  })();
+  document.querySelectorAll(".copy").forEach(b => b.addEventListener("click", async () => {
+    const t = document.getElementById(b.dataset.copy).textContent.trim();
+    try { await navigator.clipboard.writeText(t); const o = b.textContent; b.textContent = "Copiado!"; setTimeout(() => b.textContent = o, 1500); } catch (e) {}
+  }));
+</script>
+</body>
+</html>
