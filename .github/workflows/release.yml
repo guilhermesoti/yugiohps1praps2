@@ -23,10 +23,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
+          # A versão do arquivo VERSAO tem de ser a da tag (v0.3.2-beta = "0.3.2 beta")
+          # e o ELF tem de ter sido compilado com ela (é o que a abertura mostra).
+          VERSAO="$(tr -d '\r\n' < VERSAO)"
+          ESPERADA="$(echo "${TAG#v}" | tr '-' ' ')"
+          if [ "$VERSAO" != "$ESPERADA" ]; then
+            echo "::error::VERSAO diz '$VERSAO', a tag pede '$ESPERADA'"; exit 1
+          fi
+          if ! strings release/YFM_PS2.ELF | grep -qF "versao $VERSAO "; then
+            echo "::error::o release/YFM_PS2.ELF não foi compilado com a versão $VERSAO"; exit 1
+          fi
           mkdir -p pacote/YFM
           mkdir -p pacote/YFM/languages
           cp release/YFM_PS2.ELF release/LEIA-ME.txt LICENSE CREDITOS.md pacote/YFM/
           cp languages/pt-br.txt pacote/YFM/languages/
+          sed -i "1s/(v[^)]*)/(v$VERSAO)/" pacote/YFM/LEIA-ME.txt
           cp tools/ps2/iso/montar_iso.exe pacote/YFM/
           cp -r release/ART pacote/ART
           # A página que cria a ISO ou o aplicativo a partir do .bin/.cue do jogador

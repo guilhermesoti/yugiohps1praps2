@@ -131,7 +131,13 @@ def thunk_assembly(text):
     return "\n".join(lines) + "\n"
 
 
+# A versão mostrada na abertura (intro_ps2.c) vem do arquivo VERSAO, na raiz:
+# é ele que se muda para uma release nova (o workflow confere com a tag).
+with open(os.path.join(ROOT, "VERSAO"), encoding="utf-8") as _f:
+    VERSAO = _f.read().strip()
+
 UNIT_FLAGS = {"src/pc/guest/main.c": ["-Dmain=Memories_PcMain"],
+              "src/ps2/intro_ps2.c": ['-DYFM_VERSAO="' + VERSAO + '"'],
               "src/pc/render/soft_gpu.c": ["-O3"],
               "src/pc/sdk/libpress.c": ["-O3"],
               "src/pc/audio/spu.c": ["-O3"],
@@ -144,6 +150,8 @@ def compile_unit(job):
     flags = list(flags) + UNIT_FLAGS.get(source, [])
     path = os.path.join(build_src, os.path.relpath(source, "src")) if not source.startswith("/") else source
     newest = os.path.getmtime(path)
+    if source.endswith("intro_ps2.c"):
+        newest = max(newest, os.path.getmtime(os.path.join(ROOT, "VERSAO")))
     if source.endswith("irx.S"):
         # .incbin: o ícone do memory card (src/ps2/mcicon) também conta.
         for name in ("icon.sys", "yfm.icn"):

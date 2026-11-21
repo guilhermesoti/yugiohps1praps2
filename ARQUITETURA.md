@@ -52,6 +52,10 @@ arquivos de `src/pc/` e `src/game/`. Para ver só o que o port mudou no projeto 
    - `guest_branches.S`: funções de módulos chamadas pelo nome.
 4. Liga tudo com `ps2/linkfile` (programa em `0x00400000`) → `tmp/ps2/YFM_PS2.ELF`.
 
+- **Versão**: o arquivo `VERSAO` (raiz) é a versão mostrada na abertura (`intro_ps2.c`, via
+  `-DYFM_VERSAO` do `build_ps2.py`). O workflow de release confere que ela bate com a tag e que o
+  ELF enviado foi compilado com ela.
+
 ## 4. A camada PS2 (`src/ps2/`), arquivo por arquivo
 
 | Arquivo | Função |
