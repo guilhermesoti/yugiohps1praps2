@@ -89,7 +89,7 @@ void Ps2_Sha256Retail(const void *data, size_t size, uint8_t digest[32])
     static uint32_t piece[1024];
     uint32_t at = (uint32_t)(uintptr_t)data, retail = (at & 0x1FFFFFu) | 0x80000000u, i, done;
     Sha256Ctx ctx;
-    if (at < 0xC0000000u || retail < FIRST || retail + size > LAST || (size & 3) || (at & 3)) {
+    if (at < 0xC0000000u || at >= 0xC0200000u || retail < FIRST || retail + size > LAST || (size & 3) || (at & 3)) {
         Sha256(data, size, digest);
         return;
     }
