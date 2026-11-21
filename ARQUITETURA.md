@@ -237,8 +237,13 @@ Mapa da memória do GS (páginas de 8 KB): 0–127 VRAM do PS1, 128–167 vídeo
 
 ## 11. Pendências conhecidas
 
-- Vídeos no console real: ainda podem engasgar (decodificação MDEC em software no EE + leitura do
-  USB).
+- Vídeos: rodam a 15 quadros por segundo, que é o ritmo do próprio MOVIE.STR (10 setores por
+  quadro a 150 setores/s); o MDEC em software gasta uns 21 ms por quadro no console (40 no
+  PCSX2), dentro dos 66 ms. O som cortava porque o buffer do audsrv tem só 1175 quadros
+  (53 ms) e a folga pedia 2205: ficava sempre cheio e sobrava som a cada chamada. Desde
+  20/11/2026 a fila fica em 2/3 do buffer (`audio_target`) com uma correção lenta da deriva
+  entre o relógio do EE e o da saída; o log mostra "audio sem folga" e "buffer seco" por vídeo
+  (0 e 0 no PCSX2). Falta conferir no console.
 - Áudio a 22 kHz (metade da taxa original) para caber no tempo do EE.
 - Tradução PT-BR (`languages/pt-br.txt`, idioma 6 = `LANGUAGE_PT_BR`, padrão no PS2): feita a
   partir do `es.txt` (mesmos códigos e caixas do PAL), descrições refeitas em 20 colunas e até

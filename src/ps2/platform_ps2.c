@@ -893,7 +893,10 @@ int Platform_PadConnected(int port) { return port == 0; }
  * which only changes on this thread too. ---- */
 static void (*mixer)(int16_t *frames, size_t count);
 static int16_t mix_buffer[2048 * 2] __attribute__((aligned(64)));
-static unsigned underruns;
+static unsigned underruns;    /* o buffer do audsrv secou: a TV fica sem som (um corte) */
+static unsigned overflows;    /* não coube tudo: o SPU do jogo atrasa um pouco */
+static int audio_capacity;    /* o buffer do audsrv, em quadros estéreo (no PCSX2, 1175: 53 ms) */
+static int audio_target = 735; /* o nível em que a fila fica depois de cada escrita: 2/3 do buffer */
 
 static uint64_t now_us(void)
 {
@@ -909,8 +912,12 @@ static uint64_t now_us(void)
  * clock's ticks, the waits and the movie decoder (Ps2_PumpAudio), on the
  * game's thread: the mixer reads what the game's sound driver writes there.
  * audsrv's queued/available counts are not reliable on every IOP image, so
- * only the free room bounds a call (more is dropped, not queued late). */
-#define AUDIO_LEAD 2205
+ * only the free room bounds a call (more is dropped, not queued late).
+ * O buffer do audsrv é pequeno (4700 bytes, 53 ms a 22050 Hz): a folga tinha
+ * 2205 quadros (100 ms) e não cabia. O buffer ficava sempre cheio e a cada
+ * chamada sobrava um pouco (o SPU do jogo atrasava e o som do vídeo, o XA,
+ * cortava). A folga agora é uns 2/3 do buffer (20/11/2026). */
+#define AUDIO_LEAD_MAX 2205
 static uint64_t audio_clock_us, audio_last_pump, audio_longest_gap;
 void Ps2_PumpAudio(void)
 {
@@ -923,18 +930,33 @@ void Ps2_PumpAudio(void)
     if (audio_last_pump && now - audio_last_pump > audio_longest_gap) audio_longest_gap = now - audio_last_pump;
     audio_last_pump = now;
     if (!audio_clock_us || now - audio_clock_us > 300000u) {
-        /* The start, or a stall (a load): from now, with the lead again. */
+        /* The start, or a stall (a load): from now, filling the buffer to
+         * the level it is kept at. */
         audio_clock_us = now;
-        frames = AUDIO_LEAD;
+        frames = (size_t)audio_target;
+        room = audsrv_available() / 4;
+        if (room < 0) room = 0;
     } else {
         frames = (size_t)((now - audio_clock_us) * 22050u / 1000000u);
         if (frames < 64) return;
         audio_clock_us += (uint64_t)frames * 1000000u / 22050u;
+        room = audsrv_available() / 4;
+        if (room < 0) room = 0;
+        if (audio_capacity > 0) {
+            int queued = audio_capacity - (room < audio_capacity ? room : audio_capacity), fix;
+            /* A fila secou desde a última chamada: a TV ficou um instante sem som. */
+            if (queued <= 16) underruns++;
+            /* O relógio do EE e o da saída de som não andam juntos (no PCSX2
+             * a saída consome uns 0,3% a menos): sem correção o buffer enchia
+             * aos poucos e voltava a sobrar som. O nível depois desta escrita
+             * é puxado para audio_target, um oitavo da diferença por vez. */
+            fix = (audio_target - (queued + (int)frames)) / 8;
+            frames = (int)frames + fix > 0 ? (size_t)((int)frames + fix) : 0;
+        }
     }
-    room = audsrv_available() / 4;
     if ((int)frames > room) {
         frames = room > 0 ? (size_t)room : 0;
-        underruns++;
+        overflows++;
     }
     pumping = 1;
     while (frames) {
@@ -961,9 +983,9 @@ void Ps2_MovieFrame(int rgb24)
         if (frames == 30) {
             unsigned elapsed = (unsigned)(now - since);
             printf("ps2: video %u quadros: %u ms em 30 (%u fps), disco %u ms, mdec %u ms, maior pausa do audio %u ms, "
-                   "audio cortado %u vezes\n", total, elapsed / 1000, elapsed ? 30000000u / elapsed : 0,
+                   "audio sem folga %u vezes, buffer seco %u vezes\n", total, elapsed / 1000, elapsed ? 30000000u / elapsed : 0,
                    (unsigned)(Ps2_ReadUs / 1000), (unsigned)(Ps2_MdecUs / 1000), (unsigned)(audio_longest_gap / 1000),
-                   underruns);
+                   overflows, underruns);
             frames = 0;
         }
     } else if (total) {
@@ -981,6 +1003,14 @@ int Platform_StartAudio(void (*mix)(int16_t *frames, size_t count))
         return -1;
     }
     audsrv_set_volume(MAX_VOLUME);
+    audio_capacity = audsrv_available() / 4; /* vazio agora: o tamanho do buffer */
+    if (audio_capacity > 0) {
+        audio_target = audio_capacity * 2 / 3;
+        if (audio_target > AUDIO_LEAD_MAX) audio_target = AUDIO_LEAD_MAX;
+    } else {
+        audio_capacity = 0; /* sem a medida: só o espaço livre limita, como antes */
+    }
+    printf("ps2: audio: buffer do audsrv %d quadros (%d ms)\n", audio_capacity, audio_capacity * 1000 / 22050);
     mixer = mix;
     return 0;
 }
