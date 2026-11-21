@@ -112,7 +112,7 @@ viram `0xC004xxxx` (negativos). `Memories_Icall` (`thunk.S`) faz assim:
   `VSync`, e a tela piscava mostrando o buffer em desenho.
 - Vídeos (STR, 24 bits): o formato do PS1 é igual ao `PSMCT24` do GS; as linhas são copiadas sem
   conversão (páginas 128–167) e exibidas de lá.
-- Menus do port (tela de save): desenhados na CPU em resolução dobrada e reduzidos à metade (o texto
+- Menus do port (tela de save): desenhados na CPU com o triplo da resolução (`OV` 3, 960×720) e reduzidos a um terço (o texto
   do menu tem no mínimo 16 px), numa janela opaca azul com borda dourada de até 200×130 e escritos como pixels numa **cópia** do buffer exibido; duas cópias se alternam
   (páginas 472–491 e 492–511), então a que está na tela nunca é escrita. A VRAM do jogo nunca é
   alterada.

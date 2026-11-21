@@ -1468,7 +1468,7 @@ const uint16_t *Ps2_OverlayBox(int *changed, int *bx, int *by, int *bw, int *bh)
     signature = SaveMenu_Signature() * 2654435761u ^ DeckMenu_Signature() * 40503u ^ (unsigned)Menu_NoticeShown();
     *changed = !was_shown || signature != last_signature;
     if (*changed) {
-        /* Drawn at twice the screen's size and halved: the menu's text at
+        /* Drawn at three times the screen's size (OV) and reduced: the menu's text at
          * its smallest is 16 pixels, too big for a 320 x 240 picture. The
          * window takes the middle, at most 200 x 130 of the screen. */
         MenuCanvas canvas = {overlay_argb + 75 * OV * 320 * OV, 320 * OV, 320 * OV, 90 * OV, 0};
